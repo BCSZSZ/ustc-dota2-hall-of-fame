@@ -350,6 +350,13 @@ h2 {
   font-size: 0.88rem;
 }
 
+.panel-caption {
+  max-width: 38rem;
+  margin: 0;
+  line-height: 1.6;
+  text-align: right;
+}
+
 .quick-ranges {
   display: flex;
   flex-wrap: wrap;
@@ -949,6 +956,10 @@ footer p {
     align-items: flex-start;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .panel-caption {
+    text-align: left;
   }
 
   .quick-ranges {

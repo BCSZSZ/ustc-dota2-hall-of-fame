@@ -10,8 +10,8 @@
     />
     <title>科大光荣榜 · Dota 2 内战战绩</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css" />
-    <script src="./app.js?v=20261103-1" type="module"></script>
+    <link rel="stylesheet" href="./styles.css?v=20261103-2" />
+    <script src="./app.js?v=20261103-2" type="module"></script>
   </head>
   <body>
     <div class="fireworks" aria-hidden="true"></div>
@@ -117,7 +117,9 @@
             <p class="eyebrow">论功行赏</p>
             <h2 id="statsTitle">玩家统计</h2>
           </div>
-          <p class="panel-caption">按总场数、胜场排序</p>
+          <p class="panel-caption">
+            排名按修正胜率（胜场 + 1）÷（总场数 + 2）；同分依次比较胜场、总场数。表中显示真实胜率。
+          </p>
         </div>
         <div class="table-scroll">
           <table class="stats-table">

@@ -78,6 +78,19 @@ function formatPercent(value) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function comparePlayerRanking(left, right) {
+  // Compare (wins + 1) / (total + 2) exactly, without floating-point rounding.
+  const adjustedRateOrder =
+    (right.wins + 1) * (left.total + 2) - (left.wins + 1) * (right.total + 2);
+  return (
+    adjustedRateOrder ||
+    right.wins - left.wins ||
+    right.total - left.total ||
+    left.name.localeCompare(right.name, "zh-CN") ||
+    left.accountId - right.accountId
+  );
+}
+
 function makeCell(tag, text, className = "") {
   const cell = document.createElement(tag);
   cell.textContent = text;
@@ -174,14 +187,7 @@ function calculate(matches) {
     }
   }
 
-  const players = [...stats.values()].sort(
-    (left, right) =>
-      right.total - left.total ||
-      right.wins - left.wins ||
-      left.losses - right.losses ||
-      left.name.localeCompare(right.name, "zh-CN") ||
-      left.accountId - right.accountId,
-  );
+  const players = [...stats.values()].sort(comparePlayerRanking);
   return { players, pairs };
 }
 
