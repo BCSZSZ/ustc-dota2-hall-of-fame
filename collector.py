@@ -36,7 +36,7 @@ class OpenDotaLeagueClient:
         self._free_exhausted = False
         self._client = httpx.Client(
             base_url=API_BASE_URL,
-            headers={"User-Agent": "keda-dota-honor-roll/1.0"},
+            headers={"User-Agent": "ustc-dota2-hall-of-fame/1.0"},
             timeout=timeout_seconds,
             transport=transport,
         )

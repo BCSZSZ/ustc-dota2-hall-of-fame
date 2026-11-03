@@ -7,7 +7,7 @@ Dota 2 内战联赛 19224 的公开战绩看板。
 - 每天 JST 10:00 从 OpenDota 自动刷新并部署到 GitHub Pages
 - 默认使用匿名免费接口；匿名日额度耗尽后才使用可选的 `OPENDOTA_API_KEY`
 
-线上地址：<https://bcszsz.github.io/keda-dota-honor-roll/>
+线上地址：<https://bcszsz.github.io/ustc-dota2-hall-of-fame/>
 
 ## 本地采集
 

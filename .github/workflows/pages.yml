@@ -21,7 +21,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: keda-dota-honor-roll-pages
+  group: ustc-dota2-hall-of-fame-pages
   cancel-in-progress: false
 
 jobs:
