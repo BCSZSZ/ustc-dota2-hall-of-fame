@@ -6,12 +6,12 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-20T01:03:46.634464+00:00",
+  "generated_at_utc": "2026-11-21T01:04:12.551369+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
-    "match_ids_returned": 7,
-    "matches_available": 7,
+    "match_ids_returned": 11,
+    "matches_available": 11,
     "unavailable_matches": [],
     "anonymous_player_slots": 0,
     "incomplete_roster_match_ids": [],
@@ -499,6 +499,282 @@
           "personaname": "nameless422",
           "player_slot": 132,
           "hero_id": 31
+        }
+      ]
+    },
+    {
+      "match_id": 9097938439,
+      "league_id": 19224,
+      "start_time": 1795179890,
+      "duration": 1984,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 1098196409,
+          "personaname": "玄德",
+          "player_slot": 0,
+          "hero_id": 17
+        },
+        {
+          "account_id": 243513067,
+          "personaname": "被狼认可的牧羊人",
+          "player_slot": 1,
+          "hero_id": 32
+        },
+        {
+          "account_id": 136619313,
+          "personaname": "WC.BCSZSZ",
+          "player_slot": 2,
+          "hero_id": 31
+        },
+        {
+          "account_id": 182754056,
+          "personaname": "nameless422",
+          "player_slot": 3,
+          "hero_id": 102
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 4,
+          "hero_id": 104
+        },
+        {
+          "account_id": 193915131,
+          "personaname": "水上由岐",
+          "player_slot": 128,
+          "hero_id": 82
+        },
+        {
+          "account_id": 127811390,
+          "personaname": "烏屋茶房",
+          "player_slot": 129,
+          "hero_id": 129
+        },
+        {
+          "account_id": 1068845781,
+          "personaname": "Reisen suki",
+          "player_slot": 130,
+          "hero_id": 68
+        },
+        {
+          "account_id": 301344612,
+          "personaname": "cat spirit-60",
+          "player_slot": 131,
+          "hero_id": 18
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 132,
+          "hero_id": 88
+        }
+      ]
+    },
+    {
+      "match_id": 9098014345,
+      "league_id": 19224,
+      "start_time": 1795183030,
+      "duration": 2240,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 0,
+          "hero_id": 30
+        },
+        {
+          "account_id": 883819932,
+          "personaname": "重新启程",
+          "player_slot": 1,
+          "hero_id": 113
+        },
+        {
+          "account_id": 193915131,
+          "personaname": "水上由岐",
+          "player_slot": 2,
+          "hero_id": 102
+        },
+        {
+          "account_id": 136619313,
+          "personaname": "WC.BCSZSZ",
+          "player_slot": 3,
+          "hero_id": 88
+        },
+        {
+          "account_id": 301344612,
+          "personaname": "cat spirit-60",
+          "player_slot": 4,
+          "hero_id": 8
+        },
+        {
+          "account_id": 182754056,
+          "personaname": "nameless422",
+          "player_slot": 128,
+          "hero_id": 85
+        },
+        {
+          "account_id": 243513067,
+          "personaname": "被狼认可的牧羊人",
+          "player_slot": 129,
+          "hero_id": 44
+        },
+        {
+          "account_id": 127811390,
+          "personaname": "烏屋茶房",
+          "player_slot": 130,
+          "hero_id": 129
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 131,
+          "hero_id": 80
+        },
+        {
+          "account_id": 1068845781,
+          "personaname": "Reisen suki",
+          "player_slot": 132,
+          "hero_id": 21
+        }
+      ]
+    },
+    {
+      "match_id": 9098100964,
+      "league_id": 19224,
+      "start_time": 1795186354,
+      "duration": 1891,
+      "radiant_win": true,
+      "players": [
+        {
+          "account_id": 883819932,
+          "personaname": "重新启程",
+          "player_slot": 0,
+          "hero_id": 39
+        },
+        {
+          "account_id": 127811390,
+          "personaname": "烏屋茶房",
+          "player_slot": 1,
+          "hero_id": 129
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 2,
+          "hero_id": 48
+        },
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 3,
+          "hero_id": 31
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 4,
+          "hero_id": 50
+        },
+        {
+          "account_id": 193915131,
+          "personaname": "水上由岐",
+          "player_slot": 128,
+          "hero_id": 32
+        },
+        {
+          "account_id": 1098196409,
+          "personaname": "玄德",
+          "player_slot": 129,
+          "hero_id": 15
+        },
+        {
+          "account_id": 1068845781,
+          "personaname": "Reisen suki",
+          "player_slot": 130,
+          "hero_id": 68
+        },
+        {
+          "account_id": 301344612,
+          "personaname": "cat spirit-60",
+          "player_slot": 131,
+          "hero_id": 18
+        },
+        {
+          "account_id": 182754056,
+          "personaname": "nameless422",
+          "player_slot": 132,
+          "hero_id": 2
+        }
+      ]
+    },
+    {
+      "match_id": 9098185066,
+      "league_id": 19224,
+      "start_time": 1795189478,
+      "duration": 2036,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 1098196409,
+          "personaname": "玄德",
+          "player_slot": 0,
+          "hero_id": 21
+        },
+        {
+          "account_id": 127811390,
+          "personaname": "烏屋茶房",
+          "player_slot": 1,
+          "hero_id": 60
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 2,
+          "hero_id": 54
+        },
+        {
+          "account_id": 301344612,
+          "personaname": "cat spirit-60",
+          "player_slot": 3,
+          "hero_id": 75
+        },
+        {
+          "account_id": 182754056,
+          "personaname": "nameless422",
+          "player_slot": 4,
+          "hero_id": 85
+        },
+        {
+          "account_id": 193915131,
+          "personaname": "水上由岐",
+          "player_slot": 128,
+          "hero_id": 42
+        },
+        {
+          "account_id": 883819932,
+          "personaname": "重新启程",
+          "player_slot": 129,
+          "hero_id": 95
+        },
+        {
+          "account_id": 1007302804,
+          "personaname": "飞鞋计划",
+          "player_slot": 130,
+          "hero_id": 96
+        },
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 131,
+          "hero_id": 128
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 132,
+          "hero_id": 50
         }
       ]
     }
