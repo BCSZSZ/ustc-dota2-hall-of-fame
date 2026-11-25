@@ -10,8 +10,8 @@
     />
     <title>科大光荣榜 · Dota 2 内战战绩</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20261125-1" />
-    <script src="./app.js?v=20261125-1" type="module"></script>
+    <link rel="stylesheet" href="./styles.css?v=20261125-2" />
+    <script src="./app.js?v=20261125-2" type="module"></script>
   </head>
   <body>
     <div class="fireworks" aria-hidden="true"></div>
@@ -158,7 +158,7 @@
             <button class="matrix-fullscreen-button" id="matrixFullscreen" type="button" hidden>全屏查看</button>
           </div>
         </div>
-        <p class="matrix-note">格子显示「共同场数/胜率」，例如 3/66.7%。空白表示没有同队出场，悬停姓名可看全名。</p>
+        <p class="matrix-note">上行是共同场数，下行是胜率。空白表示没有同队出场，悬停昵称可看全名。</p>
         <div class="matrix-scroll" id="matrixScroll" role="region" aria-label="组队胜率数据表" tabindex="0">
           <table class="matrix-table" id="matrixTable"></table>
         </div>
@@ -174,7 +174,7 @@
         <div>
           <strong>数据来自 OpenDota 公开接口</strong>
           <p>
-            每天 JST 10:00 自动刷新联赛 19224。纳入有胜负结果且阵容完整的比赛，个人和组队战绩按可识别的 Account ID 统计。
+            每天 JST 10:00 自动刷新联赛 19224，并查询 Steam 公开昵称。个人和组队战绩按完整比赛中可识别的 Account ID 统计。
           </p>
         </div>
       </section>

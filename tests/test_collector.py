@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from collector import collect_league_data, normalise_match, write_snapshot
 
 
@@ -113,3 +115,52 @@ def test_collector_excludes_two_player_match_until_roster_is_complete(tmp_path: 
 
     assert [match["match_id"] for match in snapshot["matches"]] == [match_id, next_match_id]
     assert snapshot["metadata"]["incomplete_roster_match_ids"] == []
+
+
+def test_collector_refreshes_nicknames_for_players_in_cached_matches(tmp_path: Path) -> None:
+    output = tmp_path / "league.json"
+    old_match = make_match(1)
+    old_match["players"][0].update(account_id=243513067, personaname="Old nickname")
+    write_snapshot(
+        output,
+        {
+            "league_id": 19224,
+            "matches": [normalise_match(old_match, 19224)],
+            "player_names": {"1001": "Previously fetched"},
+        },
+    )
+    client = FakeClient(
+        {
+            "/leagues/19224": {"name": "Test League"},
+            "/leagues/19224/matchIds": [1, 2],
+            "/matches/2": make_match(2),
+        }
+    )
+
+    def steam_profile(request: httpx.Request) -> httpx.Response:
+        assert request.url.params.get("xml") == "1"
+        if request.url.path == "/profiles/76561198203778795/":
+            return httpx.Response(
+                200,
+                text="<profile><steamID64>76561198203778795</steamID64>"
+                "<steamID><![CDATA[New & current]]></steamID></profile>",
+            )
+        return httpx.Response(503)
+
+    with httpx.Client(
+        base_url="https://steamcommunity.com", transport=httpx.MockTransport(steam_profile)
+    ) as steam_client:
+        snapshot = collect_league_data(
+            league_id=19224,
+            output_path=output,
+            refresh_recent=1,
+            client=client,  # type: ignore[arg-type]
+            steam_client=steam_client,
+        )
+
+    assert "/matches/1" not in client.requested
+    assert snapshot["matches"][0]["players"][0]["personaname"] == "Old nickname"
+    assert snapshot["player_names"] == {
+        "1001": "Previously fetched",
+        "243513067": "New & current",
+    }

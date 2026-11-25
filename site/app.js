@@ -1,6 +1,5 @@
 const JST_OFFSET = "+09:00";
 const DAY_SECONDS = 86_400;
-const MATRIX_NAME_LIMIT = 5;
 
 const elements = {
   heroStatus: document.querySelector("#heroStatus"),
@@ -102,11 +101,13 @@ function makeCell(tag, text, className = "") {
   return cell;
 }
 
-function shortMatrixName(name) {
-  const characters = Array.from(name);
-  return characters.length > MATRIX_NAME_LIMIT
-    ? `${characters.slice(0, MATRIX_NAME_LIMIT - 1).join("")}…`
-    : name;
+function makeMatrixHeader(player, scope) {
+  const cell = document.createElement("th");
+  cell.scope = scope;
+  cell.title = `${player.name} · ${player.accountId}`;
+  cell.setAttribute("aria-label", cell.title);
+  cell.append(makeCell("span", player.name, "matrix-name"));
+  return cell;
 }
 
 function setQuickButtonActive(target) {
@@ -142,14 +143,14 @@ function getVisiblePlayers(match) {
   );
 }
 
-function calculate(matches) {
+function calculate(matches, playerNames) {
   const stats = new Map();
   const pairs = new Map();
 
   for (const match of matches) {
     const players = getVisiblePlayers(match).map((player) => ({
       accountId: Number(player.account_id),
-      name: player.personaname || `Account ${player.account_id}`,
+      name: playerNames?.[player.account_id] || player.personaname || `Account ${player.account_id}`,
       radiant: Number(player.player_slot) < 128,
     }));
 
@@ -234,31 +235,18 @@ function renderMatrix(players, pairs) {
   elements.matrixFullscreen.hidden = !hasPlayers;
   if (!hasPlayers) return;
 
-  elements.matrixTable.style.setProperty("--matrix-columns", String(players.length));
-  const names = players.map((player) => shortMatrixName(player.name));
-  function makeHeader(index, scope) {
-    const player = players[index];
-    const name = names[index];
-    const cell = makeCell("th", name);
-    cell.scope = scope;
-    cell.title = `${player.name} · ${player.accountId}`;
-    cell.setAttribute("aria-label", cell.title);
-    if (names.indexOf(name) !== names.lastIndexOf(name)) {
-      cell.append(makeCell("small", `#${index + 1}`));
-    }
-    return cell;
-  }
+  elements.matrixTable.style.setProperty("--matrix-columns", String(players.length + 1));
 
   const head = document.createElement("thead");
   const headRow = document.createElement("tr");
   headRow.append(makeCell("th", "玩家"));
-  names.forEach((_, index) => headRow.append(makeHeader(index, "col")));
+  players.forEach((player) => headRow.append(makeMatrixHeader(player, "col")));
   head.append(headRow);
 
   const body = document.createElement("tbody");
-  for (const [index, rowPlayer] of players.entries()) {
+  for (const rowPlayer of players) {
     const row = document.createElement("tr");
-    row.append(makeHeader(index, "row"));
+    row.append(makeMatrixHeader(rowPlayer, "row"));
     for (const columnPlayer of players) {
       if (rowPlayer.accountId === columnPlayer.accountId) {
         row.append(makeCell("td", "—", "pair-self"));
@@ -271,9 +259,13 @@ function renderMatrix(players, pairs) {
         continue;
       }
       const rate = pair.wins / pair.games;
-      const cell = makeCell("td", `${pair.games}/`, pairClass(rate));
+      const cell = makeCell("td", "", pairClass(rate));
       const percent = formatPercent(rate).replace(/\.0%$/, "%");
-      cell.append(document.createElement("wbr"), makeCell("span", percent, "pair-percent"));
+      cell.setAttribute("aria-label", `${pair.games} 场，胜率 ${percent}`);
+      cell.append(
+        makeCell("span", String(pair.games), "pair-games"),
+        makeCell("span", percent, "pair-percent"),
+      );
       row.append(cell);
     }
     body.append(row);
@@ -323,7 +315,7 @@ function render() {
   const matches = state.data.matches.filter(
     (match) => match.start_time >= state.from && match.start_time <= state.to,
   );
-  const { players, pairs } = calculate(matches);
+  const { players, pairs } = calculate(matches, state.data.player_names);
   elements.matchCount.textContent = String(matches.length);
   elements.playerCount.textContent = String(players.length);
   elements.rangeDays.textContent = String(Math.max(1, Math.ceil((state.to - state.from) / DAY_SECONDS)));

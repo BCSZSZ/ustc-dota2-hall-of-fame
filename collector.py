@@ -8,11 +8,14 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 import httpx
 from dotenv import load_dotenv
 
 API_BASE_URL = "https://api.opendota.com/api"
+STEAM_COMMUNITY_URL = "https://steamcommunity.com"
+STEAM_ACCOUNT_ID_OFFSET = 76_561_197_960_265_728
 DEFAULT_LEAGUE_ID = 19224
 DEFAULT_OUTPUT = Path("site/data/league.json")
 PLAYER_SLOTS = {*range(5), *range(128, 133)}
@@ -188,15 +191,17 @@ def _has_complete_roster(match: dict[str, Any]) -> bool:
     )
 
 
-def _load_existing(path: Path, league_id: int) -> dict[int, dict[str, Any]]:
+def _load_existing(
+    path: Path, league_id: int
+) -> tuple[dict[int, dict[str, Any]], dict[str, str]]:
     if not path.exists():
-        return {}
+        return {}, {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
+        return {}, {}
     if int(payload.get("league_id") or 0) != league_id:
-        return {}
+        return {}, {}
     result: dict[int, dict[str, Any]] = {}
     for match in payload.get("matches", []):
         if (
@@ -205,7 +210,40 @@ def _load_existing(path: Path, league_id: int) -> dict[int, dict[str, Any]]:
             and _has_complete_roster(match)
         ):
             result[int(match["match_id"])] = match
-    return result
+    names = payload.get("player_names")
+    return result, names if isinstance(names, dict) else {}
+
+
+def _refresh_player_names(
+    matches: list[dict[str, Any]], previous_names: dict[str, str], client: httpx.Client
+) -> dict[str, str]:
+    account_ids = sorted(
+        {
+            player["account_id"]
+            for match in matches
+            for player in match["players"]
+            if player["account_id"] is not None
+        }
+    )
+    names = {
+        str(account_id): previous_names[str(account_id)]
+        for account_id in account_ids
+        if str(account_id) in previous_names
+    }
+    for account_id in account_ids:
+        steam_id = str(STEAM_ACCOUNT_ID_OFFSET + account_id)
+        try:
+            response = client.get(f"/profiles/{steam_id}/", params={"xml": "1"})
+            if response.status_code == 429:
+                break
+            response.raise_for_status()
+            profile = ElementTree.fromstring(response.content)
+        except (httpx.HTTPError, ElementTree.ParseError):
+            continue
+        name = profile.findtext("steamID", "").strip()
+        if profile.findtext("steamID64") == steam_id and name:
+            names[str(account_id)] = name
+    return names
 
 
 def collect_league_data(
@@ -214,6 +252,7 @@ def collect_league_data(
     output_path: Path,
     refresh_recent: int = 5,
     client: OpenDotaLeagueClient,
+    steam_client: httpx.Client | None = None,
 ) -> dict[str, Any]:
     league = client.get_json(f"/leagues/{league_id}")
     match_ids_raw = client.get_json(f"/leagues/{league_id}/matchIds")
@@ -223,7 +262,7 @@ def collect_league_data(
         raise LeagueCollectionError("OpenDota returned an invalid match-ID list")
 
     match_ids = sorted({int(match_id) for match_id in match_ids_raw if int(match_id) > 0})
-    existing = _load_existing(output_path, league_id)
+    existing, player_names = _load_existing(output_path, league_id)
     refresh_ids = set(match_ids[-max(0, refresh_recent) :])
     unavailable: list[dict[str, Any]] = []
     incomplete_rosters: list[int] = []
@@ -251,6 +290,8 @@ def collect_league_data(
                 unavailable.append({"match_id": match_id, "reason": str(error)})
 
     ordered_matches = [matches[match_id] for match_id in match_ids if match_id in matches]
+    if steam_client is not None:
+        player_names = _refresh_player_names(ordered_matches, player_names, steam_client)
     anonymous_slots = sum(
         1
         for match in ordered_matches
@@ -277,6 +318,7 @@ def collect_league_data(
             "paid_calls": client.paid_calls,
             "anonymous_daily_quota_exhausted": client.free_exhausted,
         },
+        "player_names": player_names,
         "matches": ordered_matches,
     }
 
@@ -309,15 +351,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     args = build_parser().parse_args(argv)
-    with OpenDotaLeagueClient(
-        api_key=os.getenv("OPENDOTA_API_KEY"),
-        max_paid_calls=args.max_paid_calls,
-    ) as client:
+    with (
+        OpenDotaLeagueClient(
+            api_key=os.getenv("OPENDOTA_API_KEY"), max_paid_calls=args.max_paid_calls
+        ) as client,
+        httpx.Client(base_url=STEAM_COMMUNITY_URL, timeout=5.0) as steam_client,
+    ):
         payload = collect_league_data(
             league_id=args.league_id,
             output_path=args.output,
             refresh_recent=max(0, args.refresh_recent),
             client=client,
+            steam_client=steam_client,
         )
     write_snapshot(args.output, payload)
     metadata = payload["metadata"]

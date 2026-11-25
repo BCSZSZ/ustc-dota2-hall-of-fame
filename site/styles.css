@@ -776,6 +776,8 @@ tr:nth-child(3) .rank-badge {
 }
 
 .matrix-scroll {
+  width: fit-content;
+  max-width: 100%;
   border: 1px solid #d8b87d;
   border-radius: 10px;
   background: #fffdf8;
@@ -783,9 +785,9 @@ tr:nth-child(3) .rank-badge {
 }
 
 .matrix-table {
-  --matrix-label-width: 4rem;
-  width: 100%;
-  min-width: calc(var(--matrix-label-width) + 2.1875rem * var(--matrix-columns, 0));
+  --matrix-cell-width: 2.25rem;
+  --matrix-cell-height: 2rem;
+  width: calc(var(--matrix-cell-width) * var(--matrix-columns, 1));
   table-layout: fixed;
   font-size: 0.65rem;
   font-variant-numeric: tabular-nums;
@@ -793,21 +795,32 @@ tr:nth-child(3) .rank-badge {
 
 .matrix-table th,
 .matrix-table td {
-  height: 25px;
-  padding: 3px 1px;
+  width: var(--matrix-cell-width);
+  height: var(--matrix-cell-height);
+  padding: 0 1px;
   border-right: 1px solid #ead9ba;
   border-bottom: 1px solid #ead9ba;
   font-size: inherit;
-  line-height: 1.15;
+  line-height: 0.75rem;
   text-align: center;
+  vertical-align: middle;
 }
 
 .matrix-table th {
   letter-spacing: 0;
+}
+
+.matrix-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
 
+.pair-games,
 .pair-percent {
+  display: block;
   white-space: nowrap;
 }
 
@@ -821,24 +834,14 @@ tr:nth-child(3) .rank-badge {
 .matrix-table thead th:first-child {
   z-index: 5;
   left: 0;
-  width: var(--matrix-label-width);
 }
 
 .matrix-table tbody th {
   position: sticky;
   z-index: 2;
   left: 0;
-  padding-inline: 4px;
   color: var(--ink);
-  text-align: left;
   background: #f9e7bc;
-}
-
-.matrix-table small {
-  display: block;
-  font-size: 0.6rem;
-  font-weight: 400;
-  opacity: 0.88;
 }
 
 .pair-self {
