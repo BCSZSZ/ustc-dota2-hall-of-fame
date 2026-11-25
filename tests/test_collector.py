@@ -72,3 +72,44 @@ def test_collector_reuses_old_matches_and_refreshes_recent(tmp_path: Path) -> No
     assert "/matches/2" in client.requested
     assert payload["metadata"]["matches_available"] == 2
     assert payload["metadata"]["anonymous_player_slots"] == 0
+
+
+def test_collector_excludes_two_player_match_until_roster_is_complete(tmp_path: Path) -> None:
+    output = tmp_path / "league.json"
+    match_id = 9103805656
+    next_match_id = 9103813138
+    complete = make_match(match_id)
+    incomplete = {
+        **complete,
+        "duration": 3152,
+        "radiant_win": False,
+        "players": [complete["players"][0], complete["players"][5]],
+    }
+    write_snapshot(output, {"league_id": 19224, "matches": [normalise_match(incomplete, 19224)]})
+    next_match = make_match(next_match_id)
+    next_match["players"][0]["account_id"] = None
+    responses = {
+        "/leagues/19224": {"name": "Test League"},
+        "/leagues/19224/matchIds": [match_id, next_match_id],
+        f"/matches/{match_id}": incomplete,
+        f"/matches/{next_match_id}": next_match,
+    }
+    client = FakeClient(responses)
+
+    snapshot = collect_league_data(
+        league_id=19224, output_path=output, refresh_recent=1, client=client,  # type: ignore[arg-type]
+    )
+
+    assert [match["match_id"] for match in snapshot["matches"]] == [next_match_id]
+    assert snapshot["metadata"]["matches_available"] == 1
+    assert snapshot["metadata"]["incomplete_roster_match_ids"] == [match_id]
+    assert snapshot["metadata"]["anonymous_player_slots"] == 1
+
+    write_snapshot(output, snapshot)
+    responses[f"/matches/{match_id}"] = complete
+    snapshot = collect_league_data(
+        league_id=19224, output_path=output, refresh_recent=1, client=client,  # type: ignore[arg-type]
+    )
+
+    assert [match["match_id"] for match in snapshot["matches"]] == [match_id, next_match_id]
+    assert snapshot["metadata"]["incomplete_roster_match_ids"] == []

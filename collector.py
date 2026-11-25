@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 API_BASE_URL = "https://api.opendota.com/api"
 DEFAULT_LEAGUE_ID = 19224
 DEFAULT_OUTPUT = Path("site/data/league.json")
+PLAYER_SLOTS = {*range(5), *range(128, 133)}
 
 
 class LeagueCollectionError(RuntimeError):
@@ -155,10 +156,7 @@ def normalise_match(raw: dict[str, Any], league_id: int) -> dict[str, Any]:
         if not isinstance(player, dict):
             continue
         player_slot = player.get("player_slot")
-        if not isinstance(player_slot, int):
-            continue
-        active_slot = 0 <= player_slot <= 4 or 128 <= player_slot <= 132
-        if not active_slot:
+        if not isinstance(player_slot, int) or player_slot not in PLAYER_SLOTS:
             continue
         account_id = player.get("account_id")
         normalised_players.append(
@@ -182,6 +180,14 @@ def normalise_match(raw: dict[str, Any], league_id: int) -> dict[str, Any]:
     }
 
 
+def _has_complete_roster(match: dict[str, Any]) -> bool:
+    players = match.get("players", [])
+    return (
+        len(players) == len(PLAYER_SLOTS)
+        and {player["player_slot"] for player in players} == PLAYER_SLOTS
+    )
+
+
 def _load_existing(path: Path, league_id: int) -> dict[int, dict[str, Any]]:
     if not path.exists():
         return {}
@@ -193,7 +199,11 @@ def _load_existing(path: Path, league_id: int) -> dict[int, dict[str, Any]]:
         return {}
     result: dict[int, dict[str, Any]] = {}
     for match in payload.get("matches", []):
-        if isinstance(match, dict) and int(match.get("match_id") or 0) > 0:
+        if (
+            isinstance(match, dict)
+            and int(match.get("match_id") or 0) > 0
+            and _has_complete_roster(match)
+        ):
             result[int(match["match_id"])] = match
     return result
 
@@ -216,6 +226,7 @@ def collect_league_data(
     existing = _load_existing(output_path, league_id)
     refresh_ids = set(match_ids[-max(0, refresh_recent) :])
     unavailable: list[dict[str, Any]] = []
+    incomplete_rosters: list[int] = []
     matches: dict[int, dict[str, Any]] = {}
 
     for match_id in match_ids:
@@ -226,7 +237,13 @@ def collect_league_data(
             raw = client.get_json(f"/matches/{match_id}")
             if not isinstance(raw, dict):
                 raise LeagueCollectionError("invalid match payload")
-            matches[match_id] = normalise_match(raw, league_id)
+            match = normalise_match(raw, league_id)
+            if _has_complete_roster(match):
+                matches[match_id] = match
+            elif match_id in existing:
+                matches[match_id] = existing[match_id]
+            else:
+                incomplete_rosters.append(match_id)
         except LeagueCollectionError as error:
             if match_id in existing:
                 matches[match_id] = existing[match_id]
@@ -240,12 +257,6 @@ def collect_league_data(
         for player in match.get("players", [])
         if player.get("account_id") is None
     )
-    incomplete_rosters = [
-        int(match["match_id"])
-        for match in ordered_matches
-        if len(match.get("players", [])) != 10
-    ]
-
     return {
         "schema_version": 1,
         "league_id": league_id,
@@ -312,7 +323,8 @@ def main(argv: list[str] | None = None) -> int:
     metadata = payload["metadata"]
     print(
         f"League {args.league_id}: wrote {metadata['matches_available']} matches "
-        f"to {args.output} ({len(metadata['unavailable_matches'])} unavailable)"
+        f"to {args.output} ({len(metadata['unavailable_matches'])} unavailable, "
+        f"{len(metadata['incomplete_roster_match_ids'])} incomplete rosters excluded)"
     )
     return 0
 

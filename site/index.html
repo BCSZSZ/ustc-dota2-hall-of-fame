@@ -10,8 +10,8 @@
     />
     <title>科大光荣榜 · Dota 2 内战战绩</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20261103-2" />
-    <script src="./app.js?v=20261103-2" type="module"></script>
+    <link rel="stylesheet" href="./styles.css?v=20261125-1" />
+    <script src="./app.js?v=20261125-1" type="module"></script>
   </head>
   <body>
     <div class="fireworks" aria-hidden="true"></div>
@@ -143,20 +143,23 @@
         </div>
       </section>
 
-      <section class="panel matrix-panel" aria-labelledby="matrixTitle">
+      <section class="panel matrix-panel" id="matrixPanel" aria-labelledby="matrixTitle">
         <div class="panel-heading matrix-heading">
           <div>
             <p class="eyebrow">并肩作战</p>
             <h2 id="matrixTitle">组队胜率矩阵</h2>
           </div>
-          <div class="legend" aria-label="胜率颜色说明">
-            <span><i class="legend-loss"></i>低于 40%</span>
-            <span><i class="legend-even"></i>40%–59.9%</span>
-            <span><i class="legend-win"></i>60% 以上</span>
+          <div class="matrix-tools">
+            <div class="legend" aria-label="胜率颜色说明">
+              <span><i class="legend-loss"></i>低于 40%</span>
+              <span><i class="legend-even"></i>40%–59.9%</span>
+              <span><i class="legend-win"></i>60% 以上</span>
+            </div>
+            <button class="matrix-fullscreen-button" id="matrixFullscreen" type="button" hidden>全屏查看</button>
           </div>
         </div>
-        <p class="matrix-note">格子显示“共同场数/胜率”，例如 3/66.7%。空白代表没有同队出场。</p>
-        <div class="matrix-scroll" id="matrixScroll">
+        <p class="matrix-note">格子显示「共同场数/胜率」，例如 3/66.7%。空白表示没有同队出场，悬停姓名可看全名。</p>
+        <div class="matrix-scroll" id="matrixScroll" role="region" aria-label="组队胜率数据表" tabindex="0">
           <table class="matrix-table" id="matrixTable"></table>
         </div>
         <div class="empty-state" id="matrixEmpty" hidden>
@@ -164,13 +167,14 @@
           <p>当前范围还没有可组成矩阵的玩家。</p>
         </div>
       </section>
+      <dialog class="matrix-dialog" id="matrixDialog" aria-labelledby="matrixTitle"></dialog>
 
       <section class="source-strip" aria-label="数据说明">
         <div class="source-icon">源</div>
         <div>
           <strong>数据来自 OpenDota 公开接口</strong>
           <p>
-            每天 JST 10:00 自动刷新联赛 19224。只统计能公开识别 Account ID 且有胜负结果的选手位；比赛隐私设置可能造成匿名或缺失。
+            每天 JST 10:00 自动刷新联赛 19224。纳入有胜负结果且阵容完整的比赛，个人和组队战绩按可识别的 Account ID 统计。
           </p>
         </div>
       </section>

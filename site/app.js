@@ -1,5 +1,6 @@
 const JST_OFFSET = "+09:00";
 const DAY_SECONDS = 86_400;
+const MATRIX_NAME_LIMIT = 5;
 
 const elements = {
   heroStatus: document.querySelector("#heroStatus"),
@@ -19,6 +20,9 @@ const elements = {
   coverageNotice: document.querySelector("#coverageNotice"),
   statsBody: document.querySelector("#statsBody"),
   statsEmpty: document.querySelector("#statsEmpty"),
+  matrixPanel: document.querySelector("#matrixPanel"),
+  matrixFullscreen: document.querySelector("#matrixFullscreen"),
+  matrixDialog: document.querySelector("#matrixDialog"),
   matrixTable: document.querySelector("#matrixTable"),
   matrixEmpty: document.querySelector("#matrixEmpty"),
   matrixScroll: document.querySelector("#matrixScroll"),
@@ -98,13 +102,11 @@ function makeCell(tag, text, className = "") {
   return cell;
 }
 
-function makePlayerLabel(player) {
-  const wrapper = document.createDocumentFragment();
-  const name = document.createTextNode(player.name);
-  const account = document.createElement("small");
-  account.textContent = String(player.accountId);
-  wrapper.append(name, account);
-  return wrapper;
+function shortMatrixName(name) {
+  const characters = Array.from(name);
+  return characters.length > MATRIX_NAME_LIMIT
+    ? `${characters.slice(0, MATRIX_NAME_LIMIT - 1).join("")}…`
+    : name;
 }
 
 function setQuickButtonActive(target) {
@@ -229,24 +231,34 @@ function renderMatrix(players, pairs) {
   const hasPlayers = players.length > 0;
   elements.matrixScroll.hidden = !hasPlayers;
   elements.matrixEmpty.hidden = hasPlayers;
+  elements.matrixFullscreen.hidden = !hasPlayers;
   if (!hasPlayers) return;
+
+  elements.matrixTable.style.setProperty("--matrix-columns", String(players.length));
+  const names = players.map((player) => shortMatrixName(player.name));
+  function makeHeader(index, scope) {
+    const player = players[index];
+    const name = names[index];
+    const cell = makeCell("th", name);
+    cell.scope = scope;
+    cell.title = `${player.name} · ${player.accountId}`;
+    cell.setAttribute("aria-label", cell.title);
+    if (names.indexOf(name) !== names.lastIndexOf(name)) {
+      cell.append(makeCell("small", `#${index + 1}`));
+    }
+    return cell;
+  }
 
   const head = document.createElement("thead");
   const headRow = document.createElement("tr");
   headRow.append(makeCell("th", "玩家"));
-  for (const player of players) {
-    const th = document.createElement("th");
-    th.append(makePlayerLabel(player));
-    headRow.append(th);
-  }
+  names.forEach((_, index) => headRow.append(makeHeader(index, "col")));
   head.append(headRow);
 
   const body = document.createElement("tbody");
-  for (const rowPlayer of players) {
+  for (const [index, rowPlayer] of players.entries()) {
     const row = document.createElement("tr");
-    const label = document.createElement("th");
-    label.append(makePlayerLabel(rowPlayer));
-    row.append(label);
+    row.append(makeHeader(index, "row"));
     for (const columnPlayer of players) {
       if (rowPlayer.accountId === columnPlayer.accountId) {
         row.append(makeCell("td", "—", "pair-self"));
@@ -259,12 +271,51 @@ function renderMatrix(players, pairs) {
         continue;
       }
       const rate = pair.wins / pair.games;
-      row.append(makeCell("td", `${pair.games}/${formatPercent(rate)}`, pairClass(rate)));
+      const cell = makeCell("td", `${pair.games}/`, pairClass(rate));
+      const percent = formatPercent(rate).replace(/\.0%$/, "%");
+      cell.append(document.createElement("wbr"), makeCell("span", percent, "pair-percent"));
+      row.append(cell);
     }
     body.append(row);
   }
 
   elements.matrixTable.append(head, body);
+}
+
+function bindMatrixFullscreen() {
+  const { matrixPanel, matrixFullscreen, matrixDialog } = elements;
+  const updateButton = () => {
+    const expanded = document.fullscreenElement === matrixPanel || matrixDialog.open;
+    matrixFullscreen.textContent = expanded ? "退出全屏" : "全屏查看";
+  };
+
+  matrixFullscreen.addEventListener("click", async () => {
+    if (document.fullscreenElement === matrixPanel) {
+      await document.exitFullscreen();
+      return;
+    }
+    if (matrixDialog.open) {
+      matrixDialog.close();
+      return;
+    }
+    if (document.fullscreenEnabled && matrixPanel.requestFullscreen) {
+      try {
+        await matrixPanel.requestFullscreen();
+        return;
+      } catch {
+        // Use the dialog when the browser denies native fullscreen.
+      }
+    }
+    matrixDialog.append(matrixPanel);
+    matrixDialog.showModal();
+    updateButton();
+  });
+  document.addEventListener("fullscreenchange", updateButton);
+  matrixDialog.addEventListener("close", () => {
+    matrixDialog.before(matrixPanel);
+    updateButton();
+    matrixFullscreen.focus({ preventScroll: true });
+  });
 }
 
 function render() {
@@ -288,12 +339,12 @@ function showCoverageNotice(data) {
   const messages = [];
   if (unavailable.length) messages.push(`${unavailable.length} 场尚未取得公开详情`);
   if (anonymous) messages.push(`${anonymous} 个选手位为匿名`);
-  if (incomplete.length) messages.push(`${incomplete.length} 场公开阵容不完整`);
+  if (incomplete.length) messages.push(`已排除 ${incomplete.length} 场公开阵容不完整的战报`);
   if (!messages.length) {
     elements.coverageNotice.hidden = true;
     return;
   }
-  elements.coverageNotice.textContent = `覆盖提示：${messages.join("；")}。这些位置不会伪装成已知玩家。`;
+  elements.coverageNotice.textContent = `覆盖提示：${messages.join("，")}。`;
   elements.coverageNotice.hidden = false;
 }
 
@@ -331,10 +382,24 @@ async function load() {
     const response = await fetch("./data/league.json", { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    if (!Array.isArray(data.matches) || data.matches.length === 0) {
-      throw new Error("数据中还没有可用比赛");
-    }
+    if (!Array.isArray(data.matches)) throw new Error("战报数据格式不正确");
+    const incomplete = new Set(data.metadata?.incomplete_roster_match_ids);
+    data.matches = data.matches.filter((match) => !incomplete.has(match.match_id));
     state.data = data;
+    elements.heroStatus.textContent = `${data.matches.length} 场战报已入册 · 联赛 ${data.league_id}`;
+    elements.updateStamp.textContent = `数据更新时间：${formatJst(Date.parse(data.generated_at_utc) / 1000)} JST`;
+    elements.availableCount.textContent = String(data.matches.length);
+    showCoverageNotice(data);
+    if (!data.matches.length) {
+      const { fromRange, toRange, fromDate, toDate, quickButtons } = elements;
+      for (const control of [fromRange, toRange, fromDate, toDate, ...quickButtons]) {
+        control.disabled = true;
+      }
+      renderStats([]);
+      renderMatrix([], new Map());
+      return;
+    }
+
     state.minimum = Math.min(...data.matches.map((match) => Number(match.start_time)));
     state.maximum = Math.max(
       ...data.matches.map((match) => Number(match.start_time) + Number(match.duration || 0)),
@@ -352,13 +417,10 @@ async function load() {
       input.max = toDateInput(state.maximum);
     }
 
-    elements.heroStatus.textContent = `${data.matches.length} 场战报已入册 · 联赛 ${data.league_id}`;
-    elements.updateStamp.textContent = `数据更新时间：${formatJst(Date.parse(data.generated_at_utc) / 1000)} JST`;
     elements.minimumTime.textContent = formatShortJst(state.minimum);
     elements.maximumTime.textContent = formatShortJst(state.maximum);
-    elements.availableCount.textContent = String(data.metadata?.matches_available ?? data.matches.length);
-    showCoverageNotice(data);
     bindControls();
+    bindMatrixFullscreen();
     const allButton = elements.quickButtons.find((button) => button.dataset.range === "all");
     setRange(state.minimum, state.maximum, allButton);
   } catch (error) {
