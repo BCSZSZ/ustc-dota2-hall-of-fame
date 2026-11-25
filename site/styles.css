@@ -785,7 +785,7 @@ tr:nth-child(3) .rank-badge {
 }
 
 .matrix-table {
-  --matrix-cell-width: 2.25rem;
+  --matrix-cell-width: 2.75rem;
   --matrix-cell-height: 2rem;
   width: calc(var(--matrix-cell-width) * var(--matrix-columns, 1));
   table-layout: fixed;
@@ -807,6 +807,7 @@ tr:nth-child(3) .rank-badge {
 }
 
 .matrix-table th {
+  padding-inline: 0;
   letter-spacing: 0;
 }
 
