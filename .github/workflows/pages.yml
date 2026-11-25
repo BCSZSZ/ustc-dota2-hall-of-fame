@@ -8,6 +8,7 @@ on:
       - ".github/workflows/pages.yml"
       - "site/**"
       - "collector.py"
+      - "mmr-api/**"
       - "requirements.txt"
       - "tests/**"
   schedule:
@@ -50,8 +51,8 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Run matchmaking tests
-        run: node --experimental-default-type=module --test tests/test_matchmaker.mjs
+      - name: Run matchmaking and shared MMR tests
+        run: node --experimental-default-type=module --test tests/*.mjs
 
       - name: Refresh OpenDota league data
         env:

@@ -19,3 +19,15 @@ python collector.py --league-id 19224 --output site/data/league.json --refresh-r
 
 OpenDota Key 只保存在本机 `.env` 或 GitHub Actions Secret 中，不会提交到仓库。
 
+
+
+## 天梯分登记和分队
+
+[登记天梯分](https://bcszsz.github.io/ustc-dota2-hall-of-fame/mmr.html)接受按 Account ID 对应的手填 MMR。访客可以修改任意联赛玩家的分数，请只维护自己的。清空后保存会恢复段位估分。分队在打开页面和每次计算时读取共享分数。
+
+基础分优先采用手填 MMR。缺手填分时，用 OpenDota 最近有效段位对应区间的中点粗估。冠绝一世没有固定上限，暂取 6000。缺段位的玩家暂用联赛段位估分的中位数。以基础分为起点回放有效内战，按个人有效场数采纳 Elo 修正，权重为 **min(50%, 场数 ÷ (场数 + 36))**。
+
+共享分数保存在 Sites 的 D1 数据库，和每日生成的联赛快照独立。[服务源码](mmr-api/worker) · [站点身份](mmr-api/.openai/hosting.json) · [数据库迁移](mmr-api/drizzle)
+
+更新服务时在对应的 Sites 源码副本中运行 **node build.mjs**，沿用现有站点身份打包发布。
+

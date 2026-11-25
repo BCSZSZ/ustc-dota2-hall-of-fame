@@ -1,0 +1,150 @@
+.mmr-shell {
+  max-width: 920px;
+}
+
+.mmr-heading {
+  row-gap: 14px;
+}
+
+.mmr-heading h2 {
+  margin: 0 0 4px;
+}
+
+.mmr-input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #c8aa80;
+  border-radius: 7px;
+  color: var(--ink);
+  font: inherit;
+  background: #fffefa;
+}
+
+.mmr-heading .mmr-input {
+  width: min(280px, 100%);
+}
+
+.mmr-help {
+  margin-block: 14px 18px;
+}
+
+.mmr-columns,
+.mmr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.5fr) minmax(118px, 0.35fr);
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+}
+
+.mmr-columns {
+  border-radius: 7px 7px 0 0;
+  color: #fff5de;
+  background: var(--red-900);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.mmr-row {
+  border-bottom: 1px solid var(--line);
+  background: #fffdf7;
+}
+
+.mmr-row:nth-child(even) {
+  background: #fff7e7;
+}
+
+.mmr-row[hidden] {
+  display: none;
+}
+
+.mmr-row.is-pending {
+  background: #ffefca;
+}
+
+.mmr-player,
+.mmr-rank {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mmr-player strong,
+.mmr-rank span {
+  display: block;
+}
+
+.mmr-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mmr-rank {
+  font-size: 0.9rem;
+}
+
+.mmr-entry .mmr-input {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+.mmr-entry .mmr-conflict,
+.mmr-feedback.is-error {
+  color: var(--red-900);
+}
+
+.mmr-empty {
+  padding: 16px 12px;
+}
+
+.mmr-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 8px 8px;
+  background: #fff3d8;
+}
+
+.mmr-actions .draft-primary {
+  flex: none;
+}
+
+.mmr-pending {
+  margin: 0;
+  color: var(--red-900);
+  font-weight: 750;
+}
+
+.mmr-feedback:empty {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .mmr-columns,
+  .mmr-row {
+    grid-template-columns: minmax(0, 1fr) minmax(78px, 0.74fr) 79px;
+    gap: 6px;
+    padding-inline: 6px;
+  }
+
+  .mmr-columns,
+  .mmr-rank {
+    font-size: 0.78rem;
+  }
+
+  .mmr-player {
+    font-size: 0.9rem;
+  }
+
+  .mmr-entry .mmr-input {
+    padding-inline: 6px;
+  }
+}

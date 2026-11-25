@@ -62,6 +62,7 @@ def test_collector_reuses_old_matches_and_refreshes_recent(tmp_path: Path) -> No
     old_payload = {
         "league_id": 19224,
         "matches": [normalise_match(make_match(1), 19224)],
+        "opendota_ratings": {"1000": 75},
     }
     write_snapshot(output, old_payload)
     client = FakeClient(
@@ -84,6 +85,8 @@ def test_collector_reuses_old_matches_and_refreshes_recent(tmp_path: Path) -> No
     assert "/matches/2" in client.requested
     assert payload["metadata"]["matches_available"] == 2
     assert payload["metadata"]["anonymous_player_slots"] == 0
+    assert payload["opendota_rank_tiers"] == {}
+    assert "opendota_ratings" not in payload
 
 
 def test_collector_excludes_two_player_match_until_roster_is_complete(tmp_path: Path) -> None:
@@ -176,7 +179,7 @@ def test_collector_refreshes_nicknames_for_players_in_cached_matches(tmp_path: P
     }
 
 
-def test_collector_refreshes_unique_ratings_in_complete_matches(tmp_path: Path) -> None:
+def test_collector_refreshes_unique_rank_tiers_in_complete_matches(tmp_path: Path) -> None:
     output = tmp_path / "league.json"
     old_match = make_match(1)
     recent_match = make_match(2)
@@ -189,14 +192,13 @@ def test_collector_refreshes_unique_ratings_in_complete_matches(tmp_path: Path) 
         {
             "league_id": 19224,
             "matches": [normalise_match(old_match, 19224)],
-            "opendota_ratings": {
-                "99": 900,
-                "1000": 1000,
-                "1001": 2000,
-                "1002": 3000,
-                "1005": 4000,
-                "1006": "5000",
-                "1007": 6000,
+            "opendota_rank_tiers": {
+                "99": 21,
+                "1000": 50,
+                "1001": 42,
+                "1002": 80,
+                "1004": 77,
+                "1006": "43",
             },
         },
     )
@@ -207,15 +209,24 @@ def test_collector_refreshes_unique_ratings_in_complete_matches(tmp_path: Path) 
             "/leagues/19224/matchIds": [1, 2, 3],
             "/matches/2": recent_match,
             "/matches/3": incomplete_match,
-            "/players/1000": {"computed_mmr": 1234.5, "computed_mmr_turbo": 9876},
-            "/players/1001": {"computed_mmr": None, "computed_mmr_turbo": 4567},
+            "/players/1000": {"rank_tier": 75},
+            "/players/1001": {"rank_tier": 0},
             "/players/1002": failure,
-            "/players/1003": {"computed_mmr": float("inf")},
-            "/players/1004": {"computed_mmr": "4000"},
-            "/players/1005": {"computed_mmr": True},
+            "/players/1003": {"rank_tier": 10},
+            "/players/1004": {"rank_tier": "54"},
+            "/players/1004/ratings": [
+                {"time": "2026-01-01T00:00:00Z", "rank_tier": 61},
+                {"time": 1_700_000_000, "rank_tier": 34},
+                {"time": "2026-02-01T00:00:00Z", "rank_tier": 81},
+                {"time": "invalid", "rank_tier": 75},
+            ],
+            "/players/1005": {"rank_tier": True, "computed_mmr": 54},
+            "/players/1005/ratings": {"rank_tier": 70},
             "/players/1006": failure,
-            "/players/1007": {"computed_mmr_turbo": 9876},
+            "/players/1006/ratings": failure,
+            "/players/1007/ratings": [{"time": 1_800_000_000, "rank_tier": 35}],
             "/players/1008": None,
+            "/players/1008/ratings": [],
         }
     )
 
@@ -223,9 +234,17 @@ def test_collector_refreshes_unique_ratings_in_complete_matches(tmp_path: Path) 
         league_id=19224, output_path=output, refresh_recent=2, client=client,  # type: ignore[arg-type]
     )
 
-    assert snapshot["opendota_ratings"] == {"1000": 1234.5, "1002": 3000}
+    assert snapshot["opendota_rank_tiers"] == {
+        "1000": 75,
+        "1001": 42,
+        "1002": 80,
+        "1003": 10,
+        "1004": 61,
+        "1007": 35,
+    }
     assert [path for path in client.requested if path.startswith("/players/")] == [
-        f"/players/{account_id}" for account_id in range(1000, 1009)
+        *(f"/players/{account_id}" for account_id in range(1000, 1009)),
+        *(f"/players/{account_id}/ratings" for account_id in range(1004, 1009)),
     ]
 
 

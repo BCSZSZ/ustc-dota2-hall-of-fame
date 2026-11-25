@@ -204,6 +204,13 @@ button {
   font-size: 0.9rem;
 }
 
+.hero-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 10px;
+}
+
 .hero-matchmaker {
   display: inline-flex;
   gap: 10px;

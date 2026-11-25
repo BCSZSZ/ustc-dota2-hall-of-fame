@@ -16,6 +16,12 @@
   padding-block: 20px 24px;
 }
 
+.draft-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
 .draft-back {
   color: var(--gold-100);
   font-size: 0.9rem;

@@ -1,4 +1,5 @@
-import { buildLeagueRoster, findBalancedTeams } from "./matchmaker-model.js?v=1";
+import { buildLeagueRoster, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=2";
+import { loadSharedMmr } from "./shared-mmr.js?v=1";
 
 const form = document.querySelector("#draftForm");
 const inputs = document.querySelector("#draftInputs");
@@ -20,6 +21,8 @@ const selected = new Set();
 const integer = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat("zh-CN", { style: "percent", minimumFractionDigits: 1 });
+let snapshot;
+let sharedState;
 let roster = [];
 let playersById = new Map();
 
@@ -34,9 +37,17 @@ function captainIds() {
   return captainFields.map((field) => Number(field.value));
 }
 
+function ratingSource(player) {
+  if (player.ratingSource === "manual") return "手填天梯分";
+  return player.ratingSource === "medal" ? "段位估分" : "中位数暂估";
+}
+
 function scoreDetails(player) {
-  const source = player.usedOpenDotaMedian ? "联赛中位数暂估" : "OpenDota 排位 Elo";
-  return `${source} ${integer.format(player.openDotaRating)} · 内战 Elo ${integer.format(player.inhouseRating)}（${player.games} 场算分）`;
+  const medal = describeRankTier(player.rankTier);
+  const source = player.ratingSource === "medal" ? medal + "估分" : ratingSource(player);
+  return source + " " + integer.format(player.baseRating) +
+    " · 内战 Elo " + integer.format(player.inhouseRating) +
+    "（" + player.games + " 场 · 采纳 " + percent.format(player.inhouseWeight) + "）";
 }
 
 function renderSelection() {
@@ -78,7 +89,7 @@ function renderPool() {
     const info = make("span", "draft-player-info");
     const name = make("span", "draft-player-name", player.name);
     name.title = player.name;
-    const account = player.usedOpenDotaMedian ? `${player.accountId} · 暂估` : String(player.accountId);
+    const account = player.accountId + " · " + ratingSource(player);
     info.append(name, make("small", "draft-player-id", account));
     const rating = make("strong", "draft-player-rating", integer.format(player.rating));
     rating.title = scoreDetails(player);
@@ -104,7 +115,7 @@ function renderTeam(label, players, average) {
     row.dataset.accountId = String(player.accountId);
     const label = make("span", "draft-team-player", player.name);
     if (index === 0) label.append(make("small", "draft-role", "队长"));
-    if (player.usedOpenDotaMedian) label.append(make("small", "draft-role", "暂估"));
+    if (player.ratingSource !== "manual") label.append(make("small", "draft-role", ratingSource(player)));
     const score = make("strong", "", integer.format(player.rating));
     score.title = scoreDetails(player);
     row.append(label, score);
@@ -171,9 +182,15 @@ picked.addEventListener("click", ({ target }) => {
   (pool.querySelector(`input[value="${id}"]`) ?? search).focus();
 });
 
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (submit.disabled) return;
+  if (inputs.disabled || submit.disabled) return;
+  inputs.disabled = true;
+  submit.textContent = "正在读取最新分数…";
+  invalidatePlans();
+  renderRoster(await refreshSharedScores());
+  submit.textContent = "计算分队";
+  if (inputs.disabled || submit.disabled) return;
   const [captainA, captainB] = captainIds().map((id) => playersById.get(id));
   const others = [...selected].map((id) => playersById.get(id));
   const result = findBalancedTeams(captainA, captainB, others);
@@ -186,28 +203,53 @@ form.addEventListener("submit", (event) => {
   results.scrollIntoView({ block: "start" });
 });
 
+async function refreshSharedScores() {
+  try {
+    sharedState = await loadSharedMmr();
+    return "";
+  } catch (error) {
+    console.error("Could not read shared MMR", error);
+    return sharedState ? "共享分读取失败，暂用本页已载入的分数。" : "共享分读取失败，暂用段位估分。";
+  }
+}
+
+function renderRoster(sharedStatus) {
+  roster = buildLeagueRoster(snapshot, sharedState?.ratings)
+    .filter((player) => Number.isFinite(player.rating))
+    .sort((left, right) => left.name.localeCompare(right.name, "zh-CN") || left.accountId - right.accountId);
+  playersById = new Map(roster.map((player) => [player.accountId, player]));
+  for (const id of selected) {
+    if (!playersById.has(id)) selected.delete(id);
+  }
+
+  const previousCaptains = captainIds();
+  for (const [index, field] of captainFields.entries()) {
+    const options = roster.map((player) => {
+      const option = new Option(player.name + " · " + player.accountId, player.accountId);
+      option.disabled = player.accountId === previousCaptains[1 - index];
+      return option;
+    });
+    field.replaceChildren(new Option("选择队长", ""), ...options);
+    field.value = playersById.has(previousCaptains[index]) ? String(previousCaptains[index]) : "";
+  }
+
+  const manualCount = roster.filter((player) => player.ratingSource === "manual").length;
+  inputs.disabled = roster.length < 10;
+  const status = inputs.disabled ? "可评分玩家不足 10 人，请补充天梯分。" :
+    roster.length + " 名可选玩家 · " + manualCount + " 人已填写天梯分";
+  dataStatus.textContent = sharedStatus ? status + " · " + sharedStatus : status;
+  renderPool();
+}
+
 async function loadRoster() {
   try {
-    const response = await fetch("./data/league.json", { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const snapshot = await response.json();
-    roster = buildLeagueRoster(snapshot)
-      .filter((player) => Number.isFinite(player.rating))
-      .sort((left, right) => left.name.localeCompare(right.name, "zh-CN") || left.accountId - right.accountId);
-    if (roster.length < 10) {
-      dataStatus.textContent = "当前快照的可评分玩家不足 10 人，请等待数据刷新。";
-      return;
-    }
-    playersById = new Map(roster.map((player) => [player.accountId, player]));
-    for (const captain of captainFields) {
-      for (const player of roster) {
-        captain.append(new Option(`${player.name} · ${player.accountId}`, player.accountId));
-      }
-    }
-    const tentative = roster.filter((player) => player.usedOpenDotaMedian).length;
-    dataStatus.textContent = `${roster.length} 名可选玩家${tentative ? ` · ${tentative} 人暂用中位数` : ""}`;
-    inputs.disabled = false;
-    renderPool();
+    const [response, sharedStatus] = await Promise.all([
+      fetch("./data/league.json", { cache: "no-store" }),
+      refreshSharedScores(),
+    ]);
+    if (!response.ok) throw new Error("Could not read league snapshot (HTTP " + response.status + ")");
+    snapshot = await response.json();
+    renderRoster(sharedStatus);
   } catch (error) {
     dataStatus.textContent = "联赛数据读取失败，请刷新页面重试。";
     console.error("Could not load the league roster", error);

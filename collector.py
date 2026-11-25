@@ -7,7 +7,6 @@ import random
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from sys import float_info
 from typing import Any
 from xml.etree import ElementTree
 
@@ -212,11 +211,11 @@ def _load_existing(
         ):
             result[int(match["match_id"])] = match
     names = payload.get("player_names")
-    ratings = payload.get("opendota_ratings")
+    rank_tiers = payload.get("opendota_rank_tiers")
     return (
         result,
         names if isinstance(names, dict) else {},
-        ratings if isinstance(ratings, dict) else {},
+        rank_tiers if isinstance(rank_tiers, dict) else {},
     )
 
 
@@ -255,21 +254,70 @@ def _refresh_player_names(
     return names
 
 
-def _refresh_opendota_ratings(
-    account_ids: list[int], previous_ratings: dict[str, Any], client: OpenDotaLeagueClient
-) -> dict[str, int | float]:
-    ratings: dict[str, int | float] = {}
+def _valid_rank_tier(value: Any) -> int | None:
+    if type(value) is not int:
+        return None
+    medal, stars = divmod(value, 10)
+    return value if value == 80 or (1 <= medal <= 7 and stars <= 5) else None
+
+
+def _latest_rank_tier(history: Any) -> int | None:
+    if not isinstance(history, list):
+        return None
+    latest_tier = None
+    latest_time = 0
+    for entry in history:
+        if not isinstance(entry, dict):
+            continue
+        rank_tier = _valid_rank_tier(entry.get("rank_tier"))
+        if rank_tier is None:
+            continue
+        observed_at = entry.get("time")
+        if isinstance(observed_at, str):
+            try:
+                timestamp = datetime.fromisoformat(observed_at)
+            except ValueError:
+                continue
+            if timestamp.tzinfo is None:
+                continue
+            observed_at = timestamp.timestamp()
+        elif type(observed_at) is not int:
+            continue
+        if observed_at > latest_time:
+            latest_time = observed_at
+            latest_tier = rank_tier
+    return latest_tier
+
+
+def _refresh_opendota_rank_tiers(
+    account_ids: list[int], previous_rank_tiers: dict[str, Any], client: OpenDotaLeagueClient
+) -> dict[str, int]:
+    rank_tiers: dict[str, int] = {}
     for account_id in account_ids:
         key = str(account_id)
         try:
             profile = client.get_json(f"/players/{key}")
         except LeagueCollectionError:
-            value = previous_ratings.get(key)
-        else:
-            value = profile.get("computed_mmr") if isinstance(profile, dict) else None
-        if type(value) in (int, float) and -float_info.max <= value <= float_info.max:
-            ratings[key] = value
-    return ratings
+            profile = None
+        rank_tier = _valid_rank_tier(profile.get("rank_tier")) if isinstance(profile, dict) else None
+        if rank_tier is None:
+            rank_tier = _valid_rank_tier(previous_rank_tiers.get(key))
+        if rank_tier is not None:
+            rank_tiers[key] = rank_tier
+
+    # Give profile requests first use of the shared request budget.
+    for account_id in account_ids:
+        key = str(account_id)
+        if key in rank_tiers:
+            continue
+        try:
+            history = client.get_json(f"/players/{key}/ratings")
+        except LeagueCollectionError:
+            continue
+        rank_tier = _latest_rank_tier(history)
+        if rank_tier is not None:
+            rank_tiers[key] = rank_tier
+    return rank_tiers
 
 
 def collect_league_data(
@@ -288,7 +336,7 @@ def collect_league_data(
         raise LeagueCollectionError("OpenDota returned an invalid match-ID list")
 
     match_ids = sorted({int(match_id) for match_id in match_ids_raw if int(match_id) > 0})
-    existing, player_names, previous_ratings = _load_existing(output_path, league_id)
+    existing, player_names, previous_rank_tiers = _load_existing(output_path, league_id)
     refresh_ids = set(match_ids[-max(0, refresh_recent) :])
     unavailable: list[dict[str, Any]] = []
     incomplete_rosters: list[int] = []
@@ -319,7 +367,7 @@ def collect_league_data(
     account_ids = _known_account_ids(ordered_matches)
     if steam_client is not None:
         player_names = _refresh_player_names(account_ids, player_names, steam_client)
-    opendota_ratings = _refresh_opendota_ratings(account_ids, previous_ratings, client)
+    opendota_rank_tiers = _refresh_opendota_rank_tiers(account_ids, previous_rank_tiers, client)
     anonymous_slots = sum(
         1
         for match in ordered_matches
@@ -347,7 +395,7 @@ def collect_league_data(
             "anonymous_daily_quota_exhausted": client.free_exhausted,
         },
         "player_names": player_names,
-        "opendota_ratings": opendota_ratings,
+        "opendota_rank_tiers": opendota_rank_tiers,
         "matches": ordered_matches,
     }
 

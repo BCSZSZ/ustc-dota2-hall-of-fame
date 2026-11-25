@@ -1,15 +1,61 @@
 const MATCH_SLOTS = [0, 1, 2, 3, 4, 128, 129, 130, 131, 132];
-const STARTING_RATING = 4000;
 const ELO_K = 50;
 const MIN_WIN_CHANCE = 0.45;
 const MAX_WIN_CHANCE = 0.55;
 const PLAN_LIMIT = 5;
 const DIVERSITY_SLACK = 0.01;
 
+// The configured medal bands span 770 points from Herald through Ancient and
+// 1000 points for Divine (4620–5620). Divide each into five equal star bands.
+// Coarse estimates use band midpoints. Tier codes without stars use the medal midpoint.
+// Immortal uses a chosen 6000 proxy. Valve documented 5620 as the old Immortal
+// Draft threshold and has since adjusted Immortal ratings.
+// https://store.steampowered.com/news/posts/?appids=570&enddate=1685665325
+// https://www.dota2.com/summerscrub2026
+const MEDALS = [
+  { name: "先锋", estimate: 385 },
+  { name: "卫士", estimate: 1155 },
+  { name: "中军", estimate: 1925 },
+  { name: "统帅", estimate: 2695 },
+  { name: "传奇", estimate: 3465 },
+  { name: "万古流芳", estimate: 4235 },
+  { name: "超凡入圣", estimate: 5120, starWidth: 200 },
+  { name: "冠绝一世", estimate: 6000 },
+];
+
+function getMedal(rankTier) {
+  if (!Number.isInteger(rankTier)) return null;
+  if (rankTier === 80 || (rankTier >= 10 && rankTier <= 75 && rankTier % 10 <= 5)) {
+    return MEDALS[Math.floor(rankTier / 10) - 1];
+  }
+  return null;
+}
+
+export function describeRankTier(rankTier) {
+  const medal = getMedal(rankTier);
+  if (!medal) return "";
+  const stars = rankTier % 10;
+  return stars ? `${medal.name} ${stars} 星` : medal.name;
+}
+
+export function estimateRankMmr(rankTier) {
+  const medal = getMedal(rankTier);
+  if (!medal) return null;
+  const stars = rankTier % 10;
+  return medal.estimate + ((stars || 3) - 3) * (medal.starWidth ?? 154);
+}
+
 function average(ratings) {
   const total = ratings.reduce((sum, rating) => sum + rating, 0);
   if (Number.isFinite(total)) return total / ratings.length;
   return ratings.reduce((sum, rating) => sum + rating / ratings.length, 0);
+}
+
+function medianRating(ratings) {
+  if (!ratings.length) return null;
+  ratings.sort((left, right) => left - right);
+  const middle = Math.floor(ratings.length / 2);
+  return ratings.length % 2 ? ratings[middle] : average(ratings.slice(middle - 1, middle + 1));
 }
 
 function expectedWinChance(ratingDifference) {
@@ -27,7 +73,7 @@ function hasFullSlots(players) {
   return MATCH_SLOTS.every((slot) => slots.has(slot));
 }
 
-export function buildLeagueRoster(snapshot) {
+export function buildLeagueRoster(snapshot, manualMmr = {}) {
   const excluded = new Set(snapshot.metadata?.incomplete_roster_match_ids);
   const matches = (snapshot.matches || [])
     .filter((match) => Number.isSafeInteger(match?.match_id) && match.match_id > 0 &&
@@ -36,6 +82,7 @@ export function buildLeagueRoster(snapshot) {
     .sort((left, right) => left.start_time - right.start_time || left.match_id - right.match_id);
   const seenMatches = new Set();
   const league = new Map();
+  const scoredMatches = [];
 
   for (const match of matches) {
     if (seenMatches.has(match.match_id)) continue;
@@ -45,7 +92,7 @@ export function buildLeagueRoster(snapshot) {
       const accountId = player.account_id;
       if (!Number.isSafeInteger(accountId) || accountId <= 0) continue;
       if (!league.has(accountId)) {
-        league.set(accountId, { accountId, name: "", games: 0, inhouseRating: STARTING_RATING });
+        league.set(accountId, { accountId, name: "", games: 0 });
       }
       const entry = league.get(accountId);
       const name = nonemptyName(player.personaname);
@@ -54,40 +101,61 @@ export function buildLeagueRoster(snapshot) {
     }
 
     if (participants.size !== MATCH_SLOTS.length) continue;
-    const radiantRatings = [];
-    const direRatings = [];
-    for (const { entry, radiant } of participants.values()) {
-      (radiant ? radiantRatings : direRatings).push(entry.inhouseRating);
+    scoredMatches.push({ participants, radiantWin: match.radiant_win });
+    for (const { entry } of participants.values()) entry.games += 1;
+  }
+
+  const medalRatings = [];
+  const manualRatings = [];
+  for (const entry of league.values()) {
+    const rankTier = snapshot.opendota_rank_tiers?.[entry.accountId];
+    const medalRating = estimateRankMmr(rankTier);
+    const manualRating = manualMmr?.[entry.accountId];
+    const hasManual = Number.isSafeInteger(manualRating) && manualRating >= 0 && manualRating <= 99999;
+    if (medalRating !== null) medalRatings.push(medalRating);
+    if (hasManual) manualRatings.push(manualRating);
+
+    entry.rankTier = medalRating === null ? null : rankTier;
+    entry.baseRating = hasManual ? manualRating : medalRating;
+    entry.ratingSource = hasManual ? "manual" : medalRating === null ? "unavailable" : "medal";
+  }
+
+  const median = medianRating(medalRatings) ?? medianRating(manualRatings);
+  for (const entry of league.values()) {
+    if (entry.baseRating === null && median !== null) {
+      entry.baseRating = median;
+      entry.ratingSource = "median";
     }
-    const expectedRadiant = expectedWinChance(average(radiantRatings) - average(direRatings));
-    const radiantDelta = ELO_K * (Number(match.radiant_win) - expectedRadiant);
-    for (const { entry, radiant } of participants.values()) {
-      entry.inhouseRating += radiant ? radiantDelta : -radiantDelta;
-      entry.games += 1;
+    entry.inhouseRating = entry.baseRating;
+  }
+
+  if (median !== null) {
+    for (const { participants, radiantWin } of scoredMatches) {
+      const radiantRatings = [];
+      const direRatings = [];
+      for (const { entry, radiant } of participants.values()) {
+        (radiant ? radiantRatings : direRatings).push(entry.inhouseRating);
+      }
+      const expectedRadiant = expectedWinChance(average(radiantRatings) - average(direRatings));
+      const radiantDelta = ELO_K * (Number(radiantWin) - expectedRadiant);
+      for (const { entry, radiant } of participants.values()) {
+        entry.inhouseRating += radiant ? radiantDelta : -radiantDelta;
+      }
     }
   }
 
-  const external = snapshot.opendota_ratings;
-  const observed = [...league.keys()]
-    .map((accountId) => external?.[accountId])
-    .filter(Number.isFinite)
-    .sort((left, right) => left - right);
-  const median = observed.length
-    ? average([observed[Math.floor((observed.length - 1) / 2)], observed[Math.floor(observed.length / 2)]])
-    : null;
-
-  return [...league.values()].map(({ accountId, name, games, inhouseRating }) => {
-    const observedRating = external?.[accountId];
-    const hasObservedRating = Number.isFinite(observedRating);
-    const openDotaRating = hasObservedRating ? observedRating : median;
+  return [...league.values()].map(({ accountId, name, games, inhouseRating, baseRating, rankTier, ratingSource }) => {
+    const inhouseWeight = baseRating === null ? 0 : Math.min(0.5, games / (games + 36));
     return {
       accountId,
       name: nonemptyName(snapshot.player_names?.[accountId]) || name || `Account ${accountId}`,
       games,
+      baseRating,
       inhouseRating,
-      openDotaRating,
-      usedOpenDotaMedian: !hasObservedRating && median !== null,
-      rating: openDotaRating === null ? null : average([inhouseRating, openDotaRating]),
+      inhouseWeight,
+      rankTier,
+      ratingSource,
+      rating: baseRating === null ? null : baseRating + inhouseWeight * (inhouseRating - baseRating),
     };
   });
 }
