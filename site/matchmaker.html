@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#970018" />
+    <meta name="description" content="为科大 Dota 2 内战固定两位队长，计算实力接近的 5v5 阵容。" />
+    <title>平衡分队 · 科大光荣榜</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css?v=20261125-4" />
+    <link rel="stylesheet" href="./matchmaker.css?v=1" />
+    <script src="./matchmaker.js?v=1" type="module"></script>
+  </head>
+  <body class="draft-page">
+    <header class="draft-header">
+      <div class="draft-header-inner">
+        <a class="draft-back" href="./"><span aria-hidden="true">←</span> 科大光荣榜</a>
+        <h1>平衡分队</h1>
+        <p>固定两位队长，再从联赛名单选八名队员，按综合 MMR 配队。</p>
+      </div>
+    </header>
+
+    <main class="page-shell draft-shell">
+      <form class="panel draft-setup" id="draftForm" aria-labelledby="draftSetupTitle">
+        <div class="draft-heading">
+          <h2 id="draftSetupTitle">选人</h2>
+          <p class="draft-meta" id="draftDataStatus" role="status">正在读取联赛名单和估分……</p>
+        </div>
+
+        <fieldset id="draftInputs" disabled aria-label="选择参赛玩家">
+          <div class="draft-captains">
+            <label class="draft-captain">
+              <span>甲队队长</span>
+              <select id="captainA" required><option value="">选择队长</option></select>
+            </label>
+            <label class="draft-captain">
+              <span>乙队队长</span>
+              <select id="captainB" required><option value="">选择队长</option></select>
+            </label>
+          </div>
+
+          <div class="draft-pool-heading">
+            <h3 id="draftPoolTitle">其他队员</h3>
+            <input type="search" id="draftSearch" aria-label="搜索玩家" placeholder="按昵称或 Account ID 搜索" />
+          </div>
+          <div class="draft-picked" id="draftPicked" aria-label="已选队员" hidden></div>
+          <div class="draft-pool" id="draftPool" role="group" aria-labelledby="draftPoolTitle"></div>
+          <p class="draft-meta" id="draftNoMatches" hidden>没有符合搜索条件的队员。</p>
+
+          <div class="draft-submit-row">
+            <p id="draftSelection" class="draft-meta" role="status">队长 0 / 2 · 队员 0 / 8</p>
+            <button class="draft-primary" id="draftSubmit" type="submit" disabled>计算分队</button>
+          </div>
+        </fieldset>
+      </form>
+
+      <section class="panel draft-results" id="draftResults" aria-labelledby="draftResultsTitle" hidden>
+        <div class="draft-heading">
+          <h2 id="draftResultsTitle" tabindex="-1">备选阵容</h2>
+        </div>
+        <p class="draft-meta" id="draftResultsSummary"></p>
+        <div id="draftPlans" class="draft-plans"></div>
+      </section>
+
+      <details class="draft-rules">
+        <summary>评分与筛选规则</summary>
+        <p>综合分由 OpenDota 排位 Elo 和内战 Elo 各占 50% 组成。内战 Elo 从 4000 分起算，按完整、可识别的 5v5 阵容及胜负更新。缺 OpenDota 估分时用联赛中位数暂估。</p>
+        <p>预计胜率由两队平均综合分按 Elo 公式计算。超过五套符合 45%–55% 时，保留最接近 50% 的一套，再优先选队员多换边的方案。候选与五五开的偏差最多比严格第 5 名多 1 个百分点。</p>
+      </details>
+    </main>
+  </body>
+</html>

@@ -7,6 +7,7 @@ import random
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from sys import float_info
 from typing import Any
 from xml.etree import ElementTree
 
@@ -83,14 +84,14 @@ class OpenDotaLeagueClient:
                 raise LeagueCollectionError(
                     "OpenDota anonymous daily quota was exhausted and no API key is configured"
                 )
-            if self._paid_calls >= self._max_paid_calls:
-                raise LeagueCollectionError(
-                    f"OpenDota paid-call safety limit reached ({self._max_paid_calls})"
-                )
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         for attempt in range(4):
             if paid:
+                if self._paid_calls >= self._max_paid_calls:
+                    raise LeagueCollectionError(
+                        f"OpenDota paid-call safety limit reached ({self._max_paid_calls})"
+                    )
                 self._paid_calls += 1
             try:
                 response = self._client.get(path, headers=headers)
@@ -193,15 +194,15 @@ def _has_complete_roster(match: dict[str, Any]) -> bool:
 
 def _load_existing(
     path: Path, league_id: int
-) -> tuple[dict[int, dict[str, Any]], dict[str, str]]:
+) -> tuple[dict[int, dict[str, Any]], dict[str, str], dict[str, Any]]:
     if not path.exists():
-        return {}, {}
+        return {}, {}, {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}, {}
+        return {}, {}, {}
     if int(payload.get("league_id") or 0) != league_id:
-        return {}, {}
+        return {}, {}, {}
     result: dict[int, dict[str, Any]] = {}
     for match in payload.get("matches", []):
         if (
@@ -211,13 +212,16 @@ def _load_existing(
         ):
             result[int(match["match_id"])] = match
     names = payload.get("player_names")
-    return result, names if isinstance(names, dict) else {}
+    ratings = payload.get("opendota_ratings")
+    return (
+        result,
+        names if isinstance(names, dict) else {},
+        ratings if isinstance(ratings, dict) else {},
+    )
 
 
-def _refresh_player_names(
-    matches: list[dict[str, Any]], previous_names: dict[str, str], client: httpx.Client
-) -> dict[str, str]:
-    account_ids = sorted(
+def _known_account_ids(matches: list[dict[str, Any]]) -> list[int]:
+    return sorted(
         {
             player["account_id"]
             for match in matches
@@ -225,6 +229,11 @@ def _refresh_player_names(
             if player["account_id"] is not None
         }
     )
+
+
+def _refresh_player_names(
+    account_ids: list[int], previous_names: dict[str, str], client: httpx.Client
+) -> dict[str, str]:
     names = {
         str(account_id): previous_names[str(account_id)]
         for account_id in account_ids
@@ -246,6 +255,23 @@ def _refresh_player_names(
     return names
 
 
+def _refresh_opendota_ratings(
+    account_ids: list[int], previous_ratings: dict[str, Any], client: OpenDotaLeagueClient
+) -> dict[str, int | float]:
+    ratings: dict[str, int | float] = {}
+    for account_id in account_ids:
+        key = str(account_id)
+        try:
+            profile = client.get_json(f"/players/{key}")
+        except LeagueCollectionError:
+            value = previous_ratings.get(key)
+        else:
+            value = profile.get("computed_mmr") if isinstance(profile, dict) else None
+        if type(value) in (int, float) and -float_info.max <= value <= float_info.max:
+            ratings[key] = value
+    return ratings
+
+
 def collect_league_data(
     *,
     league_id: int,
@@ -262,7 +288,7 @@ def collect_league_data(
         raise LeagueCollectionError("OpenDota returned an invalid match-ID list")
 
     match_ids = sorted({int(match_id) for match_id in match_ids_raw if int(match_id) > 0})
-    existing, player_names = _load_existing(output_path, league_id)
+    existing, player_names, previous_ratings = _load_existing(output_path, league_id)
     refresh_ids = set(match_ids[-max(0, refresh_recent) :])
     unavailable: list[dict[str, Any]] = []
     incomplete_rosters: list[int] = []
@@ -290,8 +316,10 @@ def collect_league_data(
                 unavailable.append({"match_id": match_id, "reason": str(error)})
 
     ordered_matches = [matches[match_id] for match_id in match_ids if match_id in matches]
+    account_ids = _known_account_ids(ordered_matches)
     if steam_client is not None:
-        player_names = _refresh_player_names(ordered_matches, player_names, steam_client)
+        player_names = _refresh_player_names(account_ids, player_names, steam_client)
+    opendota_ratings = _refresh_opendota_ratings(account_ids, previous_ratings, client)
     anonymous_slots = sum(
         1
         for match in ordered_matches
@@ -319,6 +347,7 @@ def collect_league_data(
             "anonymous_daily_quota_exhausted": client.free_exhausted,
         },
         "player_names": player_names,
+        "opendota_ratings": opendota_ratings,
         "matches": ordered_matches,
     }
 

@@ -45,6 +45,9 @@ jobs:
       - name: Run collector tests
         run: python -m pytest -q
 
+      - name: Run matchmaking tests
+        run: node --experimental-default-type=module --test tests/test_matchmaker.mjs
+
       - name: Refresh OpenDota league data
         env:
           OPENDOTA_API_KEY: ${{ secrets.OPENDOTA_API_KEY }}

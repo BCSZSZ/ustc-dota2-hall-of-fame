@@ -1,0 +1,358 @@
+.draft-header {
+  border-bottom: 2px solid var(--gold-500);
+  color: #fff5de;
+  background:
+    repeating-linear-gradient(135deg, #fff2b508 0 1px, transparent 1px 17px),
+    linear-gradient(120deg, var(--red-950), var(--red-800));
+}
+
+.draft-header-inner,
+.draft-shell {
+  width: min(1160px, calc(100% - 32px));
+  margin-inline: auto;
+}
+
+.draft-header-inner {
+  padding-block: 20px 24px;
+}
+
+.draft-back {
+  color: var(--gold-100);
+  font-size: 0.9rem;
+  text-underline-offset: 4px;
+}
+
+.draft-header h1 {
+  margin: 12px 0 6px;
+  color: var(--gold-100);
+  font-family: STKaiti, KaiTi, serif;
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  line-height: 1.15;
+}
+
+.draft-header p,
+.draft-meta {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.draft-shell {
+  margin-top: 0;
+  padding-block: 24px 48px;
+}
+
+.draft-meta {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.draft-heading,
+.draft-pool-heading,
+.draft-submit-row,
+.draft-plan-heading,
+.draft-forecast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+
+.draft-setup fieldset {
+  min-width: 0;
+  margin: 18px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.draft-captains,
+.draft-teams {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.draft-captain {
+  display: grid;
+  gap: 7px;
+  color: var(--red-900);
+  font-weight: 800;
+}
+
+.draft-captain:nth-child(2) {
+  color: #205a47;
+}
+
+.draft-captain select,
+.draft-pool-heading input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #c8aa80;
+  border-radius: 7px;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  background: #fffefa;
+}
+
+.draft-pool-heading {
+  margin: 20px 0 10px;
+}
+
+.draft-page h3,
+.draft-page h4 {
+  margin: 0;
+}
+
+.draft-pool-heading input {
+  width: min(300px, 100%);
+}
+
+.draft-picked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.draft-chip {
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid #d4aa75;
+  border-radius: 999px;
+  color: var(--red-900);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  background: #fff2d2;
+}
+
+.draft-pool {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(215px, 100%), 1fr));
+  gap: 7px;
+  max-height: 280px;
+  padding: 2px 4px 2px 2px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.draft-player {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 53px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf7;
+  cursor: pointer;
+}
+
+.draft-player:has(input:checked) {
+  border-color: #c18c40;
+  background: #fff0c7;
+}
+
+.draft-player:has(input:disabled) {
+  opacity: 0.53;
+  cursor: default;
+}
+
+.draft-player input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--red-800);
+}
+
+.draft-player-name,
+.draft-player-id {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.draft-player-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.draft-player-id {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.73rem;
+}
+
+.draft-player-rating {
+  color: var(--red-900);
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.draft-submit-row {
+  margin-top: 16px;
+}
+
+.draft-primary {
+  min-height: 44px;
+  padding: 8px 22px;
+  border: 1px solid var(--red-900);
+  border-radius: 8px;
+  color: #fff7df;
+  font-weight: 800;
+  background: var(--red-800);
+}
+
+.draft-primary:hover:not(:disabled) {
+  background: var(--red-900);
+}
+
+.draft-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.draft-page :is(a, input, select, button, summary):focus-visible {
+  outline: 2px solid #a66615;
+  outline-offset: 2px;
+}
+
+.draft-results {
+  scroll-margin-block-start: 16px;
+}
+
+.draft-results > .draft-meta {
+  margin: 8px 0 14px;
+}
+
+.draft-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(450px, 100%), 1fr));
+  gap: 14px;
+}
+
+.draft-plan {
+  padding: 14px;
+  border: 1px solid #d7b785;
+  border-radius: 10px;
+  background: #fffdf7;
+}
+
+.draft-plan-heading h3 {
+  color: var(--red-900);
+}
+
+.draft-gap,
+.draft-forecast {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.draft-forecast {
+  margin-top: 12px;
+}
+
+.draft-forecast strong {
+  color: var(--red-900);
+  font-size: 1rem;
+}
+
+.draft-forecast strong:last-child {
+  color: #205a47;
+}
+
+.draft-odds {
+  height: 6px;
+  margin: 6px 0 12px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #a4112b var(--team-a-odds), #32765b var(--team-a-odds));
+}
+
+.draft-team h4 {
+  padding: 7px 8px;
+  border-radius: 5px;
+  color: var(--red-900);
+  background: #fae5df;
+  font-size: 0.8rem;
+}
+
+.draft-team:nth-child(2) h4 {
+  color: #205a47;
+  background: #e0efe8;
+}
+
+.draft-team-players {
+  margin: 3px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.81rem;
+}
+
+.draft-team-players li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 27px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.draft-team-player {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.draft-team-players strong {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.draft-role {
+  display: inline-block;
+  margin-inline-start: 4px;
+  color: var(--muted);
+  font-size: 0.69rem;
+}
+
+.draft-rules {
+  padding: 12px 16px;
+  border: 1px solid #edc98670;
+  border-radius: 8px;
+  color: #fff4d9;
+  background: var(--red-950);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.draft-rules summary {
+  cursor: pointer;
+}
+
+.draft-page [hidden] {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .draft-header-inner,
+  .draft-shell {
+    width: calc(100% - 20px);
+  }
+
+  .draft-captains {
+    grid-template-columns: 1fr;
+  }
+
+  .draft-pool-heading input {
+    width: 100%;
+  }
+
+  .draft-teams {
+    gap: 7px;
+  }
+}
