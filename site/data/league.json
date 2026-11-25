@@ -6,12 +6,12 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-25T01:04:11.152308+00:00",
+  "generated_at_utc": "2026-11-25T05:26:12.299504+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
     "match_ids_returned": 15,
-    "matches_available": 15,
+    "matches_available": 14,
     "unavailable_matches": [],
     "anonymous_player_slots": 0,
     "incomplete_roster_match_ids": [
@@ -846,27 +846,6 @@
           "personaname": "玄德",
           "player_slot": 132,
           "hero_id": 21
-        }
-      ]
-    },
-    {
-      "match_id": 9103805656,
-      "league_id": 19224,
-      "start_time": 1795528825,
-      "duration": 3152,
-      "radiant_win": false,
-      "players": [
-        {
-          "account_id": 140721966,
-          "personaname": "Hayabusa",
-          "player_slot": 0,
-          "hero_id": 45
-        },
-        {
-          "account_id": 138814542,
-          "personaname": "坂",
-          "player_slot": 128,
-          "hero_id": 49
         }
       ]
     },
