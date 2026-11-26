@@ -46,8 +46,7 @@
   font-size: 0.9rem;
 }
 
-.stats-range input,
-.player-picker select {
+.stats-range input {
   padding: 7px 10px;
   border: 1px solid #d6ae6a;
   border-radius: 8px;
@@ -477,61 +476,195 @@
   margin-top: 10px;
 }
 
-.player-picker {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-}
-
-.position-bars {
-  display: grid;
-  gap: 8px;
-  max-width: 640px;
-}
-
-.position-bar {
-  display: grid;
-  grid-template-columns: 64px 1fr 150px;
-  align-items: center;
-  gap: 10px;
-}
-
-.position-bar .bar {
-  height: 12px;
+.lane {
+  display: inline-block;
+  min-width: 1.8em;
+  padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(137, 66, 23, 0.12);
+  color: #fff;
+  font-size: 0.78rem;
+  text-align: center;
+  background: #9a8a80;
 }
 
-.position-bar .bar i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--gold-500), var(--red-700));
+.lane-W {
+  background: #237a3b;
 }
 
-.recent-games {
+.lane-L {
+  background: #a3261b;
+}
+
+.player-grid {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.player-card {
+  min-width: 0;
+  scroll-margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fffdf7;
+}
+
+.player-card.open {
+  grid-column: 1 / -1;
+  border-color: var(--gold-500);
+  box-shadow: 0 8px 24px rgba(69, 0, 13, 0.12);
+}
+
+.match-card {
+  scroll-margin-top: 12px;
+}
+
+.player-card-head {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  color: var(--ink);
+  text-align: left;
+  background: none;
+}
+
+.player-card.open .player-card-head {
+  max-width: 560px;
+}
+
+.pc-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.pc-title strong {
+  overflow: hidden;
+  color: var(--red-900);
+  font-size: 1.15rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-record {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.pc-positions {
+  display: grid;
+  gap: 8px;
+}
+
+.pc-columns {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+  gap: 8px;
+  height: 104px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pc-column {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  height: 100%;
+  font-size: 0.72rem;
+}
+
+.pc-count {
+  color: var(--muted);
+}
+
+.pc-bar {
+  position: relative;
+  align-self: end;
+  width: 70%;
+  max-width: 34px;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  background: rgba(137, 66, 23, 0.18);
+}
+
+.pc-bar i {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--gold-500), var(--gold-700));
+}
+
+.pc-label {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.pc-rows {
+  display: grid;
+  gap: 5px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.recent-games a {
+.pc-rows li {
   display: grid;
-  grid-template-columns: 40px 110px 1fr 90px 50px;
+  grid-template-columns: 3.6em 3em 1fr;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  color: var(--ink);
-  text-decoration: none;
-  background: rgba(255, 222, 154, 0.14);
+  gap: 8px;
+  font-size: 0.85rem;
 }
 
-.recent-games a:hover {
-  background: rgba(255, 213, 107, 0.3);
+.pc-pos {
+  color: var(--muted);
+}
+
+.pc-rate {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pc-rate.small-sample {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.pc-heroes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pc-hero {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-hero .hero-img {
+  width: 40px;
+  height: 23px;
+}
+
+.player-detail {
+  padding: 0 16px 18px;
+  border-top: 1px dashed var(--line);
 }
 
 @media (max-width: 720px) {
@@ -583,15 +716,7 @@
     grid-template-columns: 1fr;
   }
 
-  .position-bar {
-    grid-template-columns: 56px 1fr;
-  }
-
-  .position-bar .num {
-    grid-column: 1 / -1;
-  }
-
-  .recent-games a {
-    grid-template-columns: 36px 1fr 80px;
+  .player-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

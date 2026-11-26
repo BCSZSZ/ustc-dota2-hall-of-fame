@@ -4,9 +4,20 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol
 
+import httpx
+from PIL import Image
+
+# Bump when summaries gain fields; older summaries are refetched once.
+SUMMARY_VERSION = 2
+IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
+HERO_IMAGE_SIZE = (128, 72)
+ITEM_IMAGE_SIZE = (66, 48)
+# A lane is won or lost when one side's 10-minute gold in that lane leads by at least 10%.
+LANE_EDGE = 0.1
 HERO_NAMES_ZH = Path(__file__).with_name("hero_names_zh.json")
 # Recheck unparsed matches after 1h, 2h, 4h, then every 8h until they are a week old.
 RETRY_HOURS = (1, 2, 4, 8)
@@ -71,6 +82,33 @@ def is_parsed(raw: dict[str, Any]) -> bool:
     )
 
 
+def _at_minute(series: Any, minute: int) -> int | None:
+    return series[minute] if isinstance(series, list) and len(series) > minute else None
+
+
+def lane_results(players: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    """Compare each lane's 10-minute gold with the opposing side's players in the same lane."""
+    groups: dict[tuple[str, bool], list[tuple[int, int]]] = {}
+    for player in players:
+        radiant = player.get("player_slot", 0) < 128
+        lane = {1: "bot" if radiant else "top", 2: "mid", 3: "top" if radiant else "bot"}.get(player.get("lane_role"))
+        gold = _at_minute(player.get("gold_t"), 10)
+        if lane and gold is not None:
+            groups.setdefault((lane, radiant), []).append((player["player_slot"], gold))
+    results: dict[int, dict[str, Any]] = {}
+    for (lane, radiant), members in groups.items():
+        rivals = groups.get((lane, not radiant))
+        if not rivals:
+            continue
+        own = sum(gold for _, gold in members)
+        other = sum(gold for _, gold in rivals)
+        edge = (own - other) / max(own, other, 1)
+        result = "W" if edge >= LANE_EDGE else "L" if edge <= -LANE_EDGE else "D"
+        for slot, _ in members:
+            results[slot] = {"lane": result, "lane_diff": own - other}
+    return results
+
+
 def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
     items = constants.get("items", {})
     key_by_id = {item["id"]: key for key, item in items.items()}
@@ -81,6 +119,7 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
     def major(key: str | None) -> bool:
         return bool(key and items.get(key, {}).get("major"))
 
+    lanes = lane_results(raw.get("players") or [])
     players = []
     for player in sorted(raw.get("players") or [], key=lambda item: item.get("player_slot", 0)):
         built: dict[str, int | None] = {}
@@ -123,9 +162,16 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
                 "scepter": bool(player.get("aghanims_scepter")),
                 "shard": bool(player.get("aghanims_shard")),
                 "built": built,
+                "lane_role": player.get("lane_role"),
+                "gold10": _at_minute(player.get("gold_t"), 10),
+                "lh10": _at_minute(player.get("lh_t"), 10),
+                "xp10": _at_minute(player.get("xp_t"), 10),
+                "lane": lanes.get(player.get("player_slot"), {}).get("lane"),
+                "lane_diff": lanes.get(player.get("player_slot"), {}).get("lane_diff"),
             }
         )
     return {
+        "v": SUMMARY_VERSION,
         "match_id": raw["match_id"],
         "start_time": raw.get("start_time"),
         "duration": raw.get("duration"),
@@ -210,7 +256,8 @@ def refresh_match_details(
         entry = previous_pending.get(key)
         raw = raw_by_id.get(match_id)
         due = entry is None or datetime.fromisoformat(entry["next_check_utc"]) <= now
-        if raw is None and old is not None and not (old["parse"] == "pending" and due):
+        current = old is not None and old.get("v") == SUMMARY_VERSION
+        if raw is None and current and not (old["parse"] == "pending" and due):
             summaries.append(old)
             if entry is not None and old["parse"] == "pending":
                 pending[key] = entry
@@ -249,3 +296,37 @@ def refresh_match_details(
     _write(data_dir / "matches.json", {"schema_version": 1, "generated_at_utc": _iso(now), "matches": summaries})
     _write(data_dir / "pending.json", {"matches": pending})
     return {"summaries": len(summaries), "fetched": fetched, "pending": len(pending)}
+
+
+def ensure_images(*, image_dir: Path, data_dir: Path, http: httpx.Client) -> int:
+    """Save small WebP copies of every hero image and of each item seen in a summary."""
+    constants = _read(data_dir / "constants.json")
+    heroes = constants.get("heroes", {})
+    items = constants.get("items", {})
+    used = {
+        key
+        for match in _read(data_dir / "matches.json").get("matches", [])
+        for player in match.get("players", [])
+        for key in [*player.get("items", []), *player.get("backpack", []), player.get("neutral"),
+                    player.get("enchant"), *player.get("built", {})]
+        if key in items
+    }
+    wanted = [
+        *((image_dir / "heroes" / f"{hero_id}.webp", hero.get("img"), HERO_IMAGE_SIZE) for hero_id, hero in heroes.items()),
+        *((image_dir / "items" / f"{key}.webp", items[key].get("img"), ITEM_IMAGE_SIZE) for key in sorted(used)),
+    ]
+    saved = 0
+    for path, source, size in wanted:
+        if path.exists() or not source:
+            continue
+        try:
+            response = http.get(IMAGE_CDN + source)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content))
+            image.thumbnail(size)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            image.save(path, "WEBP", quality=82)
+            saved += 1
+        except (httpx.HTTPError, OSError):
+            continue
+    return saved

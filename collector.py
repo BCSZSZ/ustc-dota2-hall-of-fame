@@ -13,7 +13,7 @@ from xml.etree import ElementTree
 import httpx
 from dotenv import load_dotenv
 
-from match_details import refresh_match_details
+from match_details import ensure_images, refresh_match_details
 
 API_BASE_URL = "https://api.opendota.com/api"
 STEAM_COMMUNITY_URL = "https://steamcommunity.com"
@@ -522,7 +522,10 @@ def main(argv: list[str] | None = None) -> int:
             error_type=LeagueCollectionError,
             refresh_constants=not args.incremental,
         )
+    with httpx.Client(timeout=15.0, follow_redirects=True) as cdn:
+        images = ensure_images(image_dir=args.output.parent.parent / "img", data_dir=args.output.parent, http=cdn)
     write_snapshot(args.output, payload)
+    print(f"Images: {images} new hero/item images saved")
     print(
         f"Match details: {details['summaries']} summaries, {details['fetched']} fetched, "
         f"{details['pending']} awaiting OpenDota parsing"

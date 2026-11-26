@@ -1,4 +1,3 @@
-const CDN = "https://cdn.cloudflare.steamstatic.com";
 const DAY_SECONDS = 86400;
 const MIN_RATE_GAMES = 5;
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
@@ -16,6 +15,7 @@ const state = {
   tab: "matches",
   player: null,
   openMatch: null,
+  scrollTarget: null,
   sort: {},
 };
 const details = new Map();
@@ -43,13 +43,13 @@ const won = (match, player) => isRadiant(player) === match.radiant_win;
 const minutes = (seconds) => `${Math.round(seconds / 60)}′`;
 
 function picture(src, alt, className) {
-  const image = el("img", { class: className, src: src ? CDN + src : "", alt, title: alt, loading: "lazy" });
+  const image = el("img", { class: className, src, alt, title: alt, loading: "lazy" });
   image.addEventListener("error", () => image.replaceWith(el("span", { class: `${className} fallback`, title: alt }, alt.slice(0, 2))));
   return image;
 }
 
-const heroIcon = (id) => picture(hero(id).img, hero(id).name, "hero-img");
-const itemIcon = (key) => picture(item(key).img, item(key).name, "item-img");
+const heroIcon = (id) => picture(`./img/heroes/${id}.webp`, hero(id).name, "hero-img");
+const itemIcon = (key) => picture(`./img/items/${key}.webp`, item(key).name, "item-img");
 const heroLabel = (id) => el("span", { class: "icon-label" }, heroIcon(id), hero(id).name);
 const itemLabel = (key) => el("span", { class: "icon-label" }, itemIcon(key), item(key).name);
 const playerLink = (id) =>
@@ -226,6 +226,8 @@ function scoreboard(match, radiant) {
       el("td", { class: "num" }, (player.hd ?? 0).toLocaleString()),
       el("td", { class: "num" }, (player.td ?? 0).toLocaleString()),
       el("td", { class: "num" }, (player.hh ?? 0).toLocaleString()),
+      el("td", { class: "num" }, player.gold10 === null || player.gold10 === undefined ? "—" : player.gold10.toLocaleString()),
+      el("td", { class: "num" }, player.lane ? el("span", { class: `lane lane-${player.lane}` }, LANE_TEXT[player.lane]) : "—"),
       el("td", { class: "items" },
         player.items.map(itemIcon),
         player.neutral ? el("span", { class: "neutral" }, itemIcon(player.neutral)) : null,
@@ -236,7 +238,7 @@ function scoreboard(match, radiant) {
     el("h3", {}, radiant ? "天辉" : "夜魇", el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
       el("small", {}, `击杀 ${radiant ? match.radiant_score : match.dire_score}`)),
     el("div", { class: "table-scroll" }, el("table", { class: "data-table scoreboard" },
-      el("thead", {}, el("tr", {}, ["选手", "英雄", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "装备"].map((label) => el("th", { scope: "col" }, label)))),
+      el("thead", {}, el("tr", {}, ["选手", "英雄", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10 分钟经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
       el("tbody", {}, rows))));
 }
 
@@ -286,6 +288,7 @@ function renderMatches(panel, matches) {
         type: "button", class: "match-row", "aria-expanded": String(open),
         onclick: () => {
           state.openMatch = open ? null : match.match_id;
+          state.scrollTarget = open ? null : `#match-${match.match_id}`;
           syncHash();
           render();
         },
@@ -382,65 +385,71 @@ function renderHeroes(panel, matches) {
 
 // ---------- 选手 ----------
 
-function playerGames(matches, accountId) {
-  return matches.flatMap((match) => match.players
-    .filter((player) => player.account_id === accountId)
-    .map((player) => ({ match, player, won: won(match, player) })));
+const LANE_ROLES = { 1: "优势路", 2: "中路", 3: "劣势路" };
+const LANE_TEXT = { W: "优", D: "均", L: "劣" };
+
+function winText(wins, games) {
+  return games ? `${Math.round((wins / games) * 100)}%` : "—";
 }
 
-function renderPlayers(panel, matches) {
-  const counts = new Map();
-  for (const match of state.matches) {
-    for (const player of match.players) {
-      if (player.account_id) counts.set(player.account_id, (counts.get(player.account_id) || 0) + 1);
+function laneSummary(games) {
+  const rated = games.filter((game) => game.player.lane);
+  const count = (result) => rated.filter((game) => game.player.lane === result).length;
+  return { rated: rated.length, win: count("W"), draw: count("D"), loss: count("L") };
+}
+
+function averageOf(rows, key) {
+  const values = rows.map((row) => row[key]).filter((value) => Number.isFinite(value));
+  return values.length ? average(values) : null;
+}
+
+const rounded = (value) => (value === null ? "—" : Math.round(value).toLocaleString());
+
+function positionChart(games) {
+  const rows = [1, 2, 3, 4, 5].map((pos) => {
+    const list = games.filter((game) => game.player.pos === pos);
+    const heroes = new Map();
+    for (const game of list) {
+      const row = heroes.get(game.player.hero) || { id: game.player.hero, games: 0, wins: 0 };
+      row.games += 1;
+      row.wins += game.won ? 1 : 0;
+      heroes.set(row.id, row);
     }
-  }
-  const roster = [...counts.entries()].sort((a, b) => b[1] - a[1] || playerName(a[0]).localeCompare(playerName(b[0]), "zh-CN"));
-  if (!state.player || !counts.has(state.player)) state.player = roster[0]?.[0] ?? null;
+    const top = [...heroes.values()].sort((a, b) => b.games - a.games || b.wins - a.wins).slice(0, 3);
+    return { pos, games: list.length, wins: list.filter((game) => game.won).length, top };
+  });
+  const peak = Math.max(1, ...rows.map((row) => row.games));
+  const small = (games) => (games < MIN_RATE_GAMES ? " small-sample" : "");
+  return el("div", { class: "pc-positions" },
+    el("div", { class: "pc-columns", "aria-hidden": "true" }, rows.map((row) =>
+      el("div", { class: "pc-column" },
+        el("span", { class: "pc-count" }, row.games ? `${row.games}场` : ""),
+        el("span", { class: "pc-bar", style: `height:${(row.games / peak) * 100}%` },
+          el("i", { style: `height:${row.games ? (row.wins / row.games) * 100 : 0}%` })),
+        el("span", { class: "pc-label" }, `${row.pos}号位`)))),
+    el("ul", { class: "pc-rows" }, rows.filter((row) => row.games).map((row) =>
+      el("li", {},
+        el("span", { class: "pc-pos" }, `${row.pos}号位`),
+        el("span", { class: `pc-rate${small(row.games)}`, title: record(row.wins, row.games) }, winText(row.wins, row.games)),
+        el("span", { class: "pc-heroes" }, row.top.map((entry) =>
+          el("span", { class: "pc-hero", title: `${hero(entry.id).name} ${record(entry.wins, entry.games)}` },
+            heroIcon(entry.id), el("small", {}, `${entry.wins}-${entry.games - entry.wins}`))))))));
+}
 
-  const select = el("select", {
-    id: "playerSelect",
-    onchange: (event) => {
-      state.player = Number(event.target.value);
-      syncHash();
-      render();
-    },
-  }, roster.map(([id, total]) => el("option", { value: id, selected: id === state.player }, `${playerName(id)}（${total} 场）`)));
-  panel.append(el("label", { class: "player-picker" }, "选手 ", select));
-  if (!state.player) return;
-
-  const games = playerGames(matches, state.player);
-  if (!games.length) {
-    panel.append(el("p", { class: "draft-meta" }, "这段时间内没有该选手的比赛。"));
-    return;
-  }
-  const wins = games.filter((game) => game.won).length;
-  const radiant = games.filter((game) => isRadiant(game.player));
-  const dire = games.filter((game) => !isRadiant(game.player));
+function playerDetail(games, matches) {
   const everyone = matches.flatMap((match) => match.players);
   const mine = games.map((game) => game.player);
-  const compare = (key) => `联赛平均 ${Math.round(average(everyone.map((player) => player[key] ?? 0))).toLocaleString()}`;
+  const league = (key) => `联赛平均 ${rounded(averageOf(everyone, key))}`;
+  const lanes = laneSummary(games);
+  const leagueLanes = (() => {
+    const rated = everyone.filter((player) => player.lane);
+    return rated.length ? rated.filter((player) => player.lane === "W").length / rated.length : null;
+  })();
 
-  panel.append(el("div", { class: "stat-cards" },
-    statCard("场次", String(games.length), `${record(wins, games.length)} · 胜率 ${rate(wins, games.length)}`),
-    statCard("天辉", record(radiant.filter((game) => game.won).length, radiant.length), `胜率 ${rate(radiant.filter((game) => game.won).length, radiant.length)}`),
-    statCard("夜魇", record(dire.filter((game) => game.won).length, dire.length), `胜率 ${rate(dire.filter((game) => game.won).length, dire.length)}`),
-    statCard("平均 K/D/A", kda(mine).text, `联赛平均 ${kda(everyone).text}`),
-    statCard("GPM", Math.round(average(mine.map((player) => player.gpm ?? 0))).toLocaleString(), compare("gpm")),
-    statCard("XPM", Math.round(average(mine.map((player) => player.xpm ?? 0))).toLocaleString(), compare("xpm")),
-    statCard("英雄伤害", Math.round(average(mine.map((player) => player.hd ?? 0))).toLocaleString(), compare("hd")),
-    statCard("正补", Math.round(average(mine.map((player) => player.lh ?? 0))).toLocaleString(), compare("lh"))));
-
-  const positions = [1, 2, 3, 4, 5].map((pos) => {
-    const rows = games.filter((game) => game.player.pos === pos);
-    return { pos, games: rows.length, wins: rows.filter((game) => game.won).length };
-  });
-  panel.append(section("位置分布", "号位为 OpenDota 根据录像的估计。",
-    el("div", { class: "position-bars" }, positions.map((row) =>
-      el("div", { class: "position-bar" },
-        el("span", {}, `${row.pos} 号位`),
-        el("span", { class: "bar" }, el("i", { style: `width:${(row.games / games.length) * 100}%` })),
-        el("span", { class: "num" }, row.games ? `${row.games} 场 · ${record(row.wins, row.games)}` : "—"))))));
+  const laneRows = [1, 2, 3].map((role) => {
+    const list = games.filter((game) => game.player.lane_role === role);
+    return { role, list, lanes: laneSummary(list), wins: list.filter((game) => game.won).length };
+  }).filter((row) => row.list.length);
 
   const heroes = new Map();
   for (const game of games) {
@@ -449,33 +458,90 @@ function renderPlayers(panel, matches) {
     row.games.push(game.player);
     row.wins += game.won ? 1 : 0;
   }
-  panel.append(section("英雄池", null, sortableTable("playerHeroes", [
-    { key: "name", label: "英雄", value: (row) => hero(row.id).name, render: (row) => heroLabel(row.id) },
-    { key: "games", label: "场次", value: (row) => row.games.length, align: "num" },
-    { key: "share", label: "选用率", value: (row) => row.games.length, render: (row) => percent(row.games.length, games.length), align: "num" },
-    { key: "record", label: "胜负", value: (row) => row.wins - (row.games.length - row.wins), render: (row) => record(row.wins, row.games.length), align: "num" },
-    { key: "rate", label: "胜率", value: (row) => smoothed(row.wins, row.games.length), render: (row) => rate(row.wins, row.games.length), align: "num" },
-    { key: "kda", label: "平均 K/D/A", value: (row) => kda(row.games).ratio, render: (row) => kda(row.games).text, align: "num" },
-    { key: "gpm", label: "GPM", value: (row) => average(row.games.map((player) => player.gpm ?? 0)), render: (row) => Math.round(average(row.games.map((player) => player.gpm ?? 0))), align: "num" },
-  ], [...heroes.values()], "games")));
 
-  const { rows } = itemRows(matches, (player) => player.account_id === state.player);
-  panel.append(section("常出装备", null, sortableTable("playerItems", [
-    { key: "name", label: "装备", value: (row) => item(row.key).name, render: (row) => itemLabel(row.key) },
-    { key: "count", label: "次数", value: (row) => row.count, align: "num" },
-    { key: "share", label: "出装率", value: (row) => row.count, render: (row) => percent(row.count, games.length), align: "num" },
-    { key: "record", label: "胜负", value: (row) => row.wins - (row.count - row.wins), render: (row) => record(row.wins, row.count), align: "num" },
-    { key: "time", label: "平均首购", value: (row) => (row.times.length ? average(row.times) : Infinity), render: (row) => (row.times.length ? minutes(average(row.times)) : "—"), align: "num" },
-  ], rows, "count")));
+  return el("div", { class: "player-detail" },
+    section("对线", "看 10 分钟时的情况。对线结果按该路双方选手 10 分钟经济总和比较，领先 10% 以上为优，落后 10% 以上为劣，其余为均。",
+      el("div", { class: "stat-cards" },
+        statCard("10 分钟经济", rounded(averageOf(mine, "gold10")), league("gold10")),
+        statCard("10 分钟正补", rounded(averageOf(mine, "lh10")), league("lh10")),
+        statCard("10 分钟经验", rounded(averageOf(mine, "xp10")), league("xp10")),
+        statCard("线优率", lanes.rated ? winText(lanes.win, lanes.rated) : "—",
+          `优 ${lanes.win} · 均 ${lanes.draw} · 劣 ${lanes.loss}${leagueLanes === null ? "" : ` · 联赛 ${Math.round(leagueLanes * 100)}%`}`)),
+      laneRows.length ? el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
+        el("thead", {}, el("tr", {}, ["分路", "场次", "优 / 均 / 劣", "线优率", "10 分钟经济", "10 分钟正补", "比赛胜负"].map((label) => el("th", { scope: "col" }, label)))),
+        el("tbody", {}, laneRows.map((row) => el("tr", {},
+          el("td", {}, LANE_ROLES[row.role]),
+          el("td", { class: "num" }, row.list.length),
+          el("td", { class: "num" }, `${row.lanes.win} / ${row.lanes.draw} / ${row.lanes.loss}`),
+          el("td", { class: "num" }, row.lanes.rated ? winText(row.lanes.win, row.lanes.rated) : "—"),
+          el("td", { class: "num" }, rounded(averageOf(row.list.map((game) => game.player), "gold10"))),
+          el("td", { class: "num" }, rounded(averageOf(row.list.map((game) => game.player), "lh10"))),
+          el("td", { class: "num" }, record(row.wins, row.list.length))))))) : null),
+    section("场均数据", null, el("div", { class: "stat-cards" },
+      statCard("K/D/A", kda(mine).text, `联赛平均 ${kda(everyone).text}`),
+      statCard("GPM", rounded(averageOf(mine, "gpm")), league("gpm")),
+      statCard("XPM", rounded(averageOf(mine, "xpm")), league("xpm")),
+      statCard("正补", rounded(averageOf(mine, "lh")), league("lh")),
+      statCard("英雄伤害", rounded(averageOf(mine, "hd")), league("hd")),
+      statCard("建筑伤害", rounded(averageOf(mine, "td")), league("td")))),
+    section("英雄池", null, sortableTable("playerHeroes", [
+      { key: "name", label: "英雄", value: (row) => hero(row.id).name, render: (row) => heroLabel(row.id) },
+      { key: "games", label: "场次", value: (row) => row.games.length, align: "num" },
+      { key: "record", label: "胜负", value: (row) => row.wins - (row.games.length - row.wins), render: (row) => record(row.wins, row.games.length), align: "num" },
+      { key: "rate", label: "胜率", value: (row) => smoothed(row.wins, row.games.length), render: (row) => rate(row.wins, row.games.length), align: "num" },
+      { key: "kda", label: "平均 K/D/A", value: (row) => kda(row.games).ratio, render: (row) => kda(row.games).text, align: "num" },
+      { key: "gold10", label: "10 分钟经济", value: (row) => averageOf(row.games, "gold10") ?? -1, render: (row) => rounded(averageOf(row.games, "gold10")), align: "num" },
+      { key: "gpm", label: "GPM", value: (row) => averageOf(row.games, "gpm") ?? -1, render: (row) => rounded(averageOf(row.games, "gpm")), align: "num" },
+    ], [...heroes.values()], "games")),
+    section("比赛记录", null, el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
+      el("thead", {}, el("tr", {}, ["结果", "时间", "英雄", "位置", "K/D/A", "10 分钟经济", "对线", ""].map((label) => el("th", { scope: "col" }, label)))),
+      el("tbody", {}, [...games].reverse().map((game) => el("tr", {},
+        el("td", {}, el("span", { class: game.won ? "result win" : "result" }, game.won ? "胜" : "负")),
+        el("td", {}, formatDate(game.match.start_time)),
+        el("td", {}, heroLabel(game.player.hero)),
+        el("td", { class: "num" }, game.player.pos ? `${game.player.pos} 号位` : "—"),
+        el("td", { class: "num" }, `${game.player.k}/${game.player.d}/${game.player.a}`),
+        el("td", { class: "num" }, rounded(game.player.gold10 ?? null)),
+        el("td", { class: "num" }, game.player.lane ? el("span", { class: `lane lane-${game.player.lane}` }, LANE_TEXT[game.player.lane]) : "—"),
+        el("td", {}, el("a", { href: `#tab=matches&match=${game.match.match_id}` }, "查看比赛")))))))));
+}
 
-  panel.append(section("比赛记录", null, el("ol", { class: "recent-games" }, [...games].reverse().map((game) =>
-    el("li", {},
-      el("a", { href: `#tab=matches&match=${game.match.match_id}` },
-        el("span", { class: game.won ? "result win" : "result" }, game.won ? "胜" : "负"),
-        el("span", {}, formatDate(game.match.start_time)),
-        heroLabel(game.player.hero),
-        el("span", { class: "num" }, `${game.player.k}/${game.player.d}/${game.player.a}`),
-        el("span", { class: "draft-meta" }, isRadiant(game.player) ? "天辉" : "夜魇")))))));
+function renderPlayers(panel, matches) {
+  const byPlayer = new Map();
+  for (const match of matches) {
+    for (const player of match.players) {
+      if (!player.account_id) continue;
+      if (!byPlayer.has(player.account_id)) byPlayer.set(player.account_id, []);
+      byPlayer.get(player.account_id).push({ match, player, won: won(match, player) });
+    }
+  }
+  const roster = [...byPlayer.entries()].sort((a, b) =>
+    b[1].length - a[1].length || playerName(a[0]).localeCompare(playerName(b[0]), "zh-CN"));
+  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。柱子高度为该号位场次，金色部分为胜场；号位为 OpenDota 根据录像的估计。点开卡片查看对线和详细数据。`));
+  const grid = el("div", { class: "player-grid" });
+  for (const [accountId, games] of roster) {
+    const open = state.player === accountId;
+    const wins = games.filter((game) => game.won).length;
+    const mine = games.map((game) => game.player);
+    const card = el("article", { class: `player-card${open ? " open" : ""}`, id: `player-${accountId}` },
+      el("button", {
+        type: "button", class: "player-card-head", "aria-expanded": String(open),
+        onclick: () => {
+          state.player = open ? null : accountId;
+          state.scrollTarget = open ? null : `#player-${accountId}`;
+          syncHash();
+          render();
+        },
+      },
+      el("span", { class: "pc-title" },
+        el("strong", {}, playerName(accountId)),
+        el("span", { class: "pc-record" }, `${record(wins, games.length)} · ${winText(wins, games.length)}`)),
+      el("span", { class: "pc-meta" }, `K/D/A ${kda(mine).text} · GPM ${rounded(averageOf(mine, "gpm"))}`),
+      positionChart(games)));
+    if (open) card.append(playerDetail(games, matches));
+    grid.append(card);
+  }
+  panel.append(grid);
 }
 
 // ---------- 页面 ----------
@@ -494,6 +560,7 @@ function readHash() {
   state.tab = params.get("tab") || (player ? "players" : "matches");
   if (player) state.player = player;
   if (match) state.openMatch = match;
+  state.scrollTarget = state.tab === "players" && player ? `#player-${player}` : state.tab === "matches" && match ? `#match-${match}` : null;
 }
 
 function render() {
@@ -512,8 +579,11 @@ function render() {
   }
   document.querySelector("#statsStatus").textContent =
     `所选时间内 ${matches.length} 场 · 全部 ${state.matches.length} 场 · 时间为日本时间`;
-  if (state.tab === "matches" && state.openMatch) {
-    document.querySelector(`#match-${state.openMatch}`)?.scrollIntoView({ block: "nearest" });
+  if (state.scrollTarget) {
+    const target = document.querySelector(state.scrollTarget);
+    state.scrollTarget = null;
+    // Wait a frame so the expanded card has its final position before scrolling it to the top.
+    if (target) requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
   }
 }
 

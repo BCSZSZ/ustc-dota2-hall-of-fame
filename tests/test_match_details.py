@@ -127,3 +127,52 @@ def test_parsed_recheck_writes_detail_and_clears_queue(tmp_path: Path) -> None:
     detail = json.loads((tmp_path / "matches" / "7.json").read_text())
     assert detail["gold_adv"] == [0, 100]
     assert [objective["type"] for objective in detail["objectives"]] == ["CHAT_MESSAGE_ROSHAN_KILL"]
+
+
+def test_lane_results_compare_ten_minute_gold_by_lane() -> None:
+    from match_details import lane_results
+
+    def player(slot: int, role: int, gold: int) -> dict[str, Any]:
+        return {"player_slot": slot, "lane_role": role, "gold_t": [0] * 10 + [gold]}
+
+    results = lane_results([
+        player(0, 1, 3000), player(1, 1, 1500),    # radiant safe lane (bottom)
+        player(128, 3, 3000),                       # dire off lane (bottom)
+        player(2, 2, 3000), player(129, 2, 2900),  # mid: within 10%
+        player(3, 3, 1000), player(130, 1, 4000),  # radiant off lane vs dire safe lane (top)
+        player(4, 4, 2000),                         # jungle: no lane result
+    ])
+
+    assert results[0] == {"lane": "W", "lane_diff": 1500}
+    assert results[128]["lane"] == "L"
+    assert results[2]["lane"] == "D" and results[129]["lane"] == "D"
+    assert results[3]["lane"] == "L" and results[130]["lane"] == "W"
+    assert 4 not in results
+
+
+def test_ensure_images_saves_small_webp_once(tmp_path: Path) -> None:
+    import io
+
+    import httpx
+    from PIL import Image
+
+    from match_details import ensure_images
+
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "constants.json").write_text(json.dumps(build_constants(HEROES, {**ITEMS, "blink": {**ITEMS["blink"], "img": "/blink.png"}})))
+    (data / "matches.json").write_text(json.dumps({"matches": [{"players": [{"items": ["blink"], "built": {}}]}]}))
+    png = io.BytesIO()
+    Image.new("RGBA", (256, 144), "red").save(png, "PNG")
+    requested: list[str] = []
+
+    def cdn(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        return httpx.Response(200, content=png.getvalue())
+
+    with httpx.Client(transport=httpx.MockTransport(cdn)) as http:
+        assert ensure_images(image_dir=tmp_path / "img", data_dir=data, http=http) == 2
+        assert ensure_images(image_dir=tmp_path / "img", data_dir=data, http=http) == 0
+
+    assert sorted(requested) == ["/am.png", "/blink.png"]
+    assert Image.open(tmp_path / "img" / "heroes" / "1.webp").size == (128, 72)
