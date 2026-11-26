@@ -1,6 +1,6 @@
 // Player page: player.html?id=<account_id>[&from=YYYY-MM-DD&to=YYYY-MM-DD].
 
-import { laneSlots } from "./lanes.js?v=5";
+import { laneSlots } from "./lanes.js?v=7";
 import {
   LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, kda,
   loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, scoreTip, section,
@@ -20,7 +20,7 @@ function playerDetail(games, matches) {
   }
 
   return el("div", { class: "player-detail" },
-    section("对线", null, laneSlots(games, { el, heroIcon, formatDate, matchHref, heroName: (id) => hero(id).name })),
+    section("对线", null, laneSlots(games, { el, heroIcon, formatDate, matchHref, statCard, heroName: (id) => hero(id).name })),
     section("场均数据", null, el("div", { class: "stat-cards" },
       statCard("K/D/A", kda(mine).text, `联赛平均 ${kda(everyone).text}`),
       statCard("GPM", rounded(averageOf(mine, "gpm")), league("gpm")),

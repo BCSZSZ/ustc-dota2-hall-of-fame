@@ -211,20 +211,87 @@ export function laneReview(match, detail, ui) {
   return box;
 }
 
-function trendDots(rows, ui) {
-  const width = 260;
-  const height = 64;
-  const values = rows.map((row) => diff(row.gold10, row.opp_gold10));
-  const peak = Math.max(500, ...values.filter(Number.isFinite).map(Math.abs));
-  const x = (index) => 8 + (rows.length > 1 ? (index / (rows.length - 1)) * (width - 16) : (width - 16) / 2);
-  const y = (value) => 6 + ((peak - value) / (2 * peak)) * (height - 12);
-  const dots = rows.map((row, index) => (Number.isFinite(values[index])
-    ? `<circle cx="${x(index).toFixed(1)}" cy="${y(values[index]).toFixed(1)}" r="4" class="dot-${row.result || "N"}"><title>${row.date} ${signed(values[index])}</title></circle>` : "")).join("");
-  const figure = ui.el("figure", { class: "lane-trend" });
-  figure.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="每场 10 分钟对位经济差">
-    <line x1="0" x2="${width}" y1="${y(0)}" y2="${y(0)}" class="zero"/>${dots}</svg>`;
-  figure.append(ui.el("figcaption", {}, "每场 10′ 对位经济差，按时间从左到右"));
-  return figure;
+// ---------- 选手页：三路概况 + 号位表现 ----------
+
+const POSITION_NAME = { 1: "1 号位 · 核心", 2: "2 号位 · 核心", 3: "3 号位 · 核心", 4: "4 号位 · 辅助", 5: "5 号位 · 辅助" };
+const RECENT_GAMES = 5;
+
+// Mean of the player's and the counterpart's value, and in how many games the player was ahead.
+function headToHead(list, key) {
+  const pairs = list.map(({ row }) => [row[key], row[`opp_${key}`]]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
+  return {
+    games: pairs.length,
+    mine: mean(pairs.map(([a]) => a)),
+    theirs: mean(pairs.map(([, b]) => b)),
+    ahead: pairs.filter(([a, b]) => a > b).length,
+  };
+}
+
+function laneOverview(list, label, ui) {
+  const { el } = ui;
+  if (!list.length) return el("article", { class: "lane-slot empty" }, el("h4", {}, label), el("p", { class: "draft-meta" }, `还没有在${label}的比赛。`));
+  const count = (result) => list.filter((entry) => entry.row.result === result).length;
+  const positions = new Map();
+  for (const { game } of list) positions.set(game.player.pos, (positions.get(game.player.pos) || 0) + 1);
+  const jungle = list.filter((entry) => entry.row.lane === "jungle").length;
+  return el("article", { class: "lane-slot" },
+    el("h4", {}, label, el("small", {}, `${list.length} 场`)),
+    el("div", { class: "lane-results" },
+      [["W", "优"], ["D", "均"], ["L", "劣"]].map(([key, text]) => el("span", { class: `lane-count lane-${key}` }, `${text} ${count(key)}`))),
+    el("p", { class: "lane-positions" }, [...positions.entries()].sort((a, b) => (a[0] ?? 9) - (b[0] ?? 9))
+      .map(([pos, games]) => `${pos ? `${pos} 号位` : "号位未知"} ${games} 场`).join("、")),
+    jungle ? el("span", { class: "jungle-tag", title: "打野的比赛归入本队少人的这一路" }, `含打野 ${jungle} 场`) : null);
+}
+
+function positionBlock(pos, list, ui) {
+  const { el } = ui;
+  const core = pos <= 3;
+  const lanes = new Map();
+  for (const { row } of list) lanes.set(ROLE_NAME[row.role], (lanes.get(ROLE_NAME[row.role]) || 0) + 1);
+  const jungle = list.filter((entry) => entry.row.lane === "jungle").length;
+  const parsed = list.filter((entry) => entry.row.deaths);
+  const deaths = parsed.reduce((total, entry) => total + entry.row.deaths.length, 0);
+  const ganked = parsed.reduce((total, entry) => total + entry.row.deaths.filter((death) => death[1] === "gank").length, 0);
+  const kills = parsed.reduce((total, entry) => total + (entry.row.kills ?? 0), 0);
+  const total = (key) => list.reduce((sum, entry) => sum + (entry.row[key] ?? 0), 0);
+  const number = (value) => (Number.isFinite(value) ? Math.round(value).toLocaleString() : "—");
+  const versus = (h2h) => (h2h.games ? `${number(h2h.mine)} vs ${number(h2h.theirs)}` : "—");
+  const aheadText = (h2h) => (h2h.games ? `${h2h.games} 场中 ${h2h.ahead} 场领先对位` : "没有对位数据");
+  const lh = headToHead(list, "lh10");
+  const xp = headToHead(list, "xp10");
+  const gold = headToHead(list, "gold10");
+  const unparsed = list.length - parsed.length;
+  const cards = [
+    core ? ui.statCard("10′ 正补（本人 vs 对位）", versus(lh), aheadText(lh)) : ui.statCard("10′ 经验（本人 vs 对位）", versus(xp), aheadText(xp)),
+    core ? ui.statCard("10′ 经济差（平均）", el("span", { class: toneClass(diff(gold.mine, gold.theirs)) }, signed(diff(gold.mine, gold.theirs))), aheadText(gold)) : null,
+    ui.statCard("对线期死亡", parsed.length ? `${deaths} 次` : "—",
+      parsed.length ? `其中被 gank ${ganked} 次 · ${parsed.length} 场${unparsed ? `（另 ${unparsed} 场录像未解析）` : ""}` : "录像解析后显示"),
+    ui.statCard("对线期参与击杀", parsed.length ? `${kills} 次` : "—", parsed.length ? `${parsed.length} 场合计` : ""),
+    core ? null : ui.statCard("10′ 前视野", `假眼 ${total("obs")} · 真眼 ${total("sen")}`, `排眼 ${total("dewards")} 次 · ${list.length} 场合计`),
+  ];
+  const recent = [...list].sort((a, b) => b.game.match.start_time - a.game.match.start_time).slice(0, RECENT_GAMES);
+  const keyDiff = (row) => (core
+    ? [el("span", { class: toneClass(diff(row.lh10, row.opp_lh10)) }, `正补 ${signed(diff(row.lh10, row.opp_lh10))}`), " · ",
+      el("span", { class: toneClass(diff(row.gold10, row.opp_gold10), 100) }, `经济 ${signed(diff(row.gold10, row.opp_gold10))}`)]
+    : el("span", { class: toneClass(diff(row.xp10, row.opp_xp10), 100) }, `经验 ${signed(diff(row.xp10, row.opp_xp10))}`));
+  return el("article", { class: "position-block" },
+    el("h4", {}, POSITION_NAME[pos] || `${pos} 号位`, el("small", {},
+      `${list.length} 场 · ${[...lanes.entries()].map(([lane, games]) => `${lane} ${games} 场`).join("、")}`),
+      jungle ? el("span", { class: "jungle-tag" }, `含打野 ${jungle} 场`) : null),
+    el("div", { class: "stat-cards" }, cards.filter(Boolean)),
+    el("div", { class: "table-scroll" }, el("table", { class: "data-table recent-lanes" },
+      el("caption", {}, `最近 ${recent.length} 场（10 分钟时与对位的差值）`),
+      el("thead", {}, el("tr", {}, ["比赛", "英雄", "对线结果", core ? "正补差 · 经济差" : "经验差", "对线期死亡"].map((text) => el("th", { scope: "col" }, text)))),
+      el("tbody", {}, recent.map(({ game, row }) => el("tr", {},
+        el("td", {}, el("a", { href: ui.matchHref(game.match.match_id) }, ui.formatDate(game.match.start_time))),
+        el("td", {}, ui.heroIcon(game.player.hero), row.lane === "jungle" ? el("span", { class: "jungle-tag" }, "打野") : null),
+        el("td", {}, row.result ? el("span", { class: `lane lane-${row.result}` }, RESULT_TEXT[row.result]) : "—"),
+        el("td", { class: "num" }, keyDiff(row)),
+        el("td", { class: "num" }, row.deaths ? `${row.deaths.length}${row.deaths.some((death) => death[1] === "gank") ? `（被 gank ${row.deaths.filter((death) => death[1] === "gank").length}）` : ""}` : "—"))))))); 
+}
+
+function toneClass(value, threshold = 1) {
+  return !Number.isFinite(value) || Math.abs(value) < threshold ? "" : value > 0 ? "diff-up" : "diff-down";
 }
 
 export function laneSlots(games, ui) {
@@ -233,60 +300,17 @@ export function laneSlots(games, ui) {
   loadLanes().then((rows) => {
     const byKey = new Map(rows.map((row) => [`${row.match_id}:${row.slot}`, row]));
     const mine = games.map((game) => ({ game, row: byKey.get(`${game.match.match_id}:${game.player.slot}`) })).filter((entry) => entry.row);
-    const perGame = (list, pick) => {
-      const values = list.map(pick).filter(Number.isFinite);
-      return values.length ? (values.reduce((total, value) => total + value, 0) / values.length).toFixed(1) : "—";
-    };
-    const tone = (value) => el("span", { class: !Number.isFinite(value) || Math.abs(value) < 0.5 ? "" : value > 0 ? "diff-up" : "diff-down" }, signed(value));
-    const avgDiff = (list, key) => tone(mean(list.map((entry) => diff(entry.row[key], entry.row[`opp_${key}`]))));
-    const deathKinds = (list) => {
-      const parsed = list.filter((entry) => entry.row.deaths);
-      if (!parsed.length) return "录像解析后显示";
-      const kind = (name) => perGame(parsed, (entry) => entry.row.deaths.filter((death) => death[1] === name).length);
-      return [`单杀 ${kind("solo")} · 对线 ${kind("lane")} · `, el("b", {}, `被 gank ${kind("gank")}`)];
-    };
-    const block = (title, list, lines) => (list.length ? el("div", { class: "lane-kind" },
-      el("h5", {}, `${title} ${list.length} 场`),
-      el("dl", { class: "lane-stats" }, lines(list).flatMap(([label, value]) => [el("dt", {}, label), el("dd", {}, value)]))) : null);
-    const coreLines = (list) => [
-      ["正补差（对位）", ["5′ ", avgDiff(list, "lh5"), " · 10′ ", avgDiff(list, "lh10")]],
-      ["10′ 经济差 / 经验差", [avgDiff(list, "gold10"), " / ", avgDiff(list, "xp10")]],
-      ["对线期死亡 / 场", deathKinds(list)],
-      ["对线期参与击杀 / 场", perGame(list, (entry) => entry.row.kills)],
-      ["游走 / 场", perGame(list, (entry) => moveCount(entry.row))],
-    ];
-    const supportLines = (list) => [
-      ["10′ 经验差 / 经济差", [avgDiff(list, "xp10"), " / ", avgDiff(list, "gold10")]],
-      ["对线期参与击杀 / 场", perGame(list, (entry) => entry.row.kills)],
-      ["对线期死亡 / 场", deathKinds(list)],
-      ["10′ 前插眼 / 场", `假眼 ${perGame(list, (entry) => entry.row.obs)} · 真眼 ${perGame(list, (entry) => entry.row.sen)}`],
-      ["10′ 前排眼 / 场", perGame(list, (entry) => entry.row.dewards)],
-      ["游走或进路 / 场", perGame(list, (entry) => moveCount(entry.row))],
-    ];
-    const slot = ([role, label]) => {
-      const list = mine.filter((entry) => entry.row.role === role).sort((a, b) => a.game.match.start_time - b.game.match.start_time);
-      if (!list.length) return el("article", { class: "lane-slot empty" }, el("h4", {}, label), el("p", { class: "draft-meta" }, `还没有在${label}的比赛。`));
-      const count = (result) => list.filter((entry) => entry.row.result === result).length;
-      const jungle = list.filter((entry) => entry.row.lane === "jungle").length;
-      const heroes = new Map();
-      for (const { game } of list) heroes.set(game.player.hero, (heroes.get(game.player.hero) || 0) + 1);
-      return el("article", { class: "lane-slot" },
-        el("h4", {}, label, el("small", {}, `${list.length} 场 · 优 ${count("W")} 均 ${count("D")} 劣 ${count("L")}`),
-          jungle ? el("span", { class: "jungle-tag", title: "打野的比赛按本队少人的这一路计算" }, `含打野 ${jungle}`) : null),
-        block("核心", list.filter((entry) => entry.row.kind === "core"), coreLines),
-        block("辅助", list.filter((entry) => entry.row.kind === "support"), supportLines),
-        el("div", { class: "lane-heroes" }, [...heroes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
-          .map(([id, played]) => el("span", { title: `${ui.heroName(id)} ${played} 场` }, ui.heroIcon(id), el("small", {}, played)))),
-        trendDots(list.map((entry) => ({ ...entry.row, date: ui.formatDate(entry.game.match.start_time) })), ui));
-    };
+    const positions = [1, 2, 3, 4, 5].map((pos) => [pos, mine.filter((entry) => entry.game.player.pos === pos)]).filter(([, list]) => list.length);
     const loose = mine.filter((entry) => entry.row.role === "jungle").length;
     box.replaceChildren(
-      el("p", { class: "draft-meta" },
-        "分路按录像里 2:00–8:00 的位置判定；打野归入本队少人的那一路。对位是同一路对面的核心或辅助，差值为本人减对位，绿色领先、红色落后。",
-        "核心看正补、经济、经验；辅助不比正补，看经验、参与击杀、死亡、插眼、排眼和游走。",
-        "对线结果按这一路双方 10 分钟经济总和比较，领先 10% 以上为优。死亡类型：单杀只有一名同路敌人参与，对线有多名同路敌人，被 gank 有其他路或打野的敌人参与。",
+      el("h3", { class: "lane-layer" }, "三路概况"),
+      el("p", { class: "draft-meta" }, "这一路双方 10 分钟经济总和领先 10% 以上为优，落后 10% 以上为劣。分路按录像里 2:00–8:00 的位置判定，打野归入本队少人的那一路。",
         loose ? ` 另有 ${loose} 场打野没有归入某一路。` : ""),
-      el("div", { class: "lane-slot-grid" }, ROLES.map(slot)));
+      el("div", { class: "lane-slot-grid" }, ROLES.map(([role, label]) => laneOverview(mine.filter((entry) => entry.row.role === role), label, ui))),
+      el("h3", { class: "lane-layer" }, "号位表现"),
+      el("p", { class: "draft-meta" }, "和对线期同一路对面同类（核心或辅助）的英雄比。核心看 10 分钟正补和经济，辅助看 10 分钟经验和视野。",
+        "对线期指 10 分钟前；被 gank 指有其他路或打野的敌人参与击杀。"),
+      ...(positions.length ? positions.map(([pos, list]) => positionBlock(pos, list, ui)) : [el("p", { class: "draft-meta" }, "没有号位数据。")]));
   });
   return box;
 }

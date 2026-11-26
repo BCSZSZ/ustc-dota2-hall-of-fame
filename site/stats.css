@@ -1678,8 +1678,7 @@ a.player-card-head {
   box-shadow: inset 3px 0 #b23a2b;
 }
 
-.lane-events .hero-img,
-.lane-heroes .hero-img {
+.lane-events .hero-img {
   width: 40px;
   height: 23px;
 }
@@ -1707,68 +1706,6 @@ a.player-card-head {
 .lane-slot.empty {
   align-content: start;
   background: repeating-linear-gradient(135deg, #fffdf7 0 10px, #fbf4e6 10px 20px);
-}
-
-.lane-stats {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px 10px;
-  margin: 0;
-  font-size: 0.88rem;
-}
-
-.lane-stats dt {
-  color: var(--muted);
-}
-
-.lane-stats dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.lane-heroes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.lane-heroes span {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.lane-trend {
-  margin: 0;
-}
-
-.lane-trend svg {
-  width: 100%;
-  max-width: 320px;
-  height: auto;
-}
-
-.lane-trend .zero {
-  stroke: var(--muted);
-  stroke-dasharray: 3 3;
-}
-
-.lane-trend circle.dot-W {
-  fill: #237a3b;
-}
-
-.lane-trend circle.dot-L {
-  fill: #a3261b;
-}
-
-.lane-trend circle.dot-D,
-.lane-trend circle.dot-N {
-  fill: #b8862a;
-}
-
-.lane-trend figcaption {
-  color: var(--muted);
-  font-size: 0.78rem;
 }
 
 .jungle-card,
@@ -1941,12 +1878,6 @@ a.player-card-head {
   background: var(--gold-300);
 }
 
-.lane-kind h5 {
-  margin: 4px 0 2px;
-  color: var(--red-900);
-  font-size: 0.9rem;
-}
-
 .diff-up {
   color: #237a3b;
   font-weight: 700;
@@ -1976,4 +1907,92 @@ a.player-card-head {
     display: block;
     margin: 0;
   }
+}
+
+/* ---------- 选手页：三路概况 + 号位表现 ---------- */
+
+.lane-layer {
+  margin: 8px 0 0;
+  color: var(--red-900);
+  font-size: 1.05rem;
+}
+
+.lane-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lane-count {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+}
+
+.lane-positions {
+  margin: 0;
+  color: var(--muted);
+}
+
+.position-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffdf7;
+}
+
+.position-block h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  color: var(--red-900);
+  font-size: 1.05rem;
+}
+
+.position-block h4 small {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.recent-lanes caption {
+  padding: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.recent-lanes .hero-img {
+  width: 40px;
+  height: 23px;
+  vertical-align: middle;
+}
+
+.lane-slot .jungle-tag {
+  justify-self: start;
+}
+
+.position-block .stat-card strong {
+  font-size: 1.2rem;
+  white-space: nowrap;
+}
+
+/* The generic ".stat-card span" label size must not shrink a coloured value inside the number. */
+.position-block .stat-card strong span {
+  font-size: inherit;
+}
+
+.stat-card .diff-up {
+  color: #237a3b;
+}
+
+.stat-card .diff-down {
+  color: #a3261b;
 }
