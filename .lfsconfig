@@ -1,0 +1,3 @@
+[lfs]
+	# Replays are archived for the workflow; clones and pulls skip them (fetch one with git lfs pull --include=<path> --exclude=).
+	fetchexclude = replays

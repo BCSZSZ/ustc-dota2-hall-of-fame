@@ -205,7 +205,8 @@ def parse_heatmaps(replay_dir: Path, data_dir: Path, parser_url: str) -> int:
         try:
             with replay.open("rb") as handle:
                 if handle.read(len(LFS_POINTER_PREFIX)) == LFS_POINTER_PREFIX:
-                    subprocess.run(["git", "lfs", "pull", f"--include={replay.as_posix()}"], check=True)
+                    # .lfsconfig excludes replays/ by default; an empty --exclude lifts that for this file.
+                    subprocess.run(["git", "lfs", "pull", f"--include={replay.as_posix()}", "--exclude="], check=True)
             result = heatmap(_parser_entries(replay, parser_url))
         except (httpx.HTTPError, subprocess.CalledProcessError, OSError, ValueError) as error:
             print(f"::warning::{match_id}: replay parse failed: {error}", file=sys.stderr)
