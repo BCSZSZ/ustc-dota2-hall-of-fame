@@ -30,7 +30,7 @@ const FIELDS = {
       return { valid: value === "" || validAlias(value), value: value === "" ? null : value };
     },
     label: (alias) => alias ?? "未填写",
-    invalid: "玩家 ID 最多 " + MAX_ALIAS_CHARS + " 个字，不能含换行或不可见字符；留空则显示 Steam 昵称。",
+    invalid: "称呼最多 " + MAX_ALIAS_CHARS + " 个字，不能含换行或不可见字符。",
   },
   mmr: {
     stored: (state, accountId) => state?.ratings[accountId] ?? null,
@@ -70,7 +70,7 @@ function applyState(state, drafts = {}) {
   current = state;
   aliasNotice.hidden = aliasesSupported(state);
   rosterStatus.textContent = entries.size + " 名玩家 · " + count("mmr") + " 人填了天梯分" +
-    (aliasesSupported(state) ? " · " + count("alias") + " 人填了玩家 ID" : "");
+    (aliasesSupported(state) ? " · " + count("alias") + " 人填了称呼" : "");
 }
 
 function collectChanges() {
@@ -138,8 +138,8 @@ function buildRow(player) {
       player.ratingSource === "median" ? "暂估 " + integer.format(player.baseRating) : ""),
   );
   const who = player.name + "（" + player.accountId + "）";
-  const alias = makeField("alias", player, { placeholder: "用 Steam 昵称", maxLength: MAX_ALIAS_CHARS * 2 });
-  alias.field.setAttribute("aria-label", who + "的玩家 ID");
+  const alias = makeField("alias", player, { placeholder: "尊姓大名？", maxLength: MAX_ALIAS_CHARS * 2 });
+  alias.field.setAttribute("aria-label", who + "的称呼");
   const mmr = makeField("mmr", player, { placeholder: "未填写", inputMode: "numeric" });
   mmr.field.setAttribute("aria-label", who + "的天梯 MMR");
   row.append(identity, rank, alias.entry, mmr.entry);
@@ -181,7 +181,7 @@ form.addEventListener("submit", async (event) => {
     if (result.conflict && stillPending) {
       report("已读取其他访客的更新。你的修改还在，请核对后再保存。", true);
     } else {
-      report("已保存。平衡分队会读取最新天梯分，各页面刷新后显示新的玩家 ID。");
+      report("已保存。刷新页面即可看到新称呼，平衡分队会读取最新天梯分。");
     }
   } catch (error) {
     report("未能确认保存结果。改动仍在，请稍后重试。", true);
