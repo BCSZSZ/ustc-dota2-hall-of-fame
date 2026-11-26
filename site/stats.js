@@ -4,10 +4,10 @@ import {
   MIN_RATE_GAMES, average, averageDims, bindRange, comebackTag, el, formatDate, formatDuration, hero, heroIcon, heroLabel, item, itemLabel, kda,
   loadData, matchHref, minutes, percent, playerHref, playerName, playerSummary, rangeParams, rate, record, section, smoothed,
   sortableTable, state, statCard, teamPanel, visibleMatches, won,
-} from "./stats-core.js?v=5";
+} from "./stats-core.js?v=6";
 
 function renderMatches(panel, matches) {
-  panel.append(section("比赛", `共 ${matches.length} 场。卡片显示每位选手的英雄、号位、装备、STRATZ IMP、评级和本局称号，悬停称号或评级可看判定条件；胜方胜率曾跌到 20% 以下的比赛标“翻盘”；点“详情”打开这场比赛的页面，查看 BP、完整数据、出装时间、经济曲线、地图和死亡复盘。`));
+  panel.append(section("比赛", `共 ${matches.length} 场。卡片显示每位选手的英雄、号位、装备、评分（由 STRATZ IMP 换算的百分制）、评级和本局称号，悬停称号或评级可看判定条件；胜方胜率曾跌到 20% 以下的比赛标“翻盘”；点“详情”打开这场比赛的页面，查看 BP、完整数据、出装时间、经济曲线、地图和死亡复盘。`));
   for (const match of [...matches].reverse()) {
     panel.append(el("article", { class: "match-card", id: `match-${match.match_id}` },
       el("div", { class: "match-head" },
@@ -104,7 +104,7 @@ function renderHeroes(panel, matches) {
 // ---------- 纪录墙 ----------
 
 const RECORDS = [
-  { label: "最高 IMP", value: (player) => player.imp, format: (value) => `+${Math.round(value)}` },
+  { label: "最高评分", value: (player) => player.score, format: (value) => `${Math.round(value)} 分` },
   { label: "最多击杀", value: (player) => player.k },
   { label: "最多助攻", value: (player) => player.a },
   { label: "最高 GPM", value: (player) => player.gpm },
@@ -151,7 +151,7 @@ function renderPlayers(panel, matches) {
   const roster = [...byPlayer.entries()].sort((a, b) =>
     b[1].length - a[1].length || playerName(a[0]).localeCompare(playerName(b[0]), "zh-CN"));
   panel.append(recordWall(matches));
-  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。评分用 STRATZ 的 IMP：与同段位、同英雄、同号位的玩家相比，0 为平均水平；评级 S ≥ +25、A ≥ +12、B ≥ 0、C ≥ −15，其余为 D。MVP 是胜方 IMP 最高的人，达到 +30 为 SMVP。雷达图和能力条是六项能力的 OpenDota 同英雄百分位，只描述打法风格，核心和辅助看的数据不同（悬停能力名可看具体口径），虚线、竖线为联赛平均。号位柱子高度为场次，金色部分为胜场，号位为 OpenDota 根据录像的估计。点卡片打开选手页，查看对线、死亡、场均数据、英雄池和比赛记录。`));
+  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。评分由 STRATZ 的 IMP 换算成百分制：IMP 与同段位、同英雄、同号位的玩家比较，0 为平均；按联赛 IMP 接近正态（标准差约 20）的分布，评分 = 100 × Φ(IMP ÷ 20)，约等于这局表现胜过的同类对局比例，50 为平均，中段拉开、两端压缩。评级 S ≥ 90、A ≥ 75、B ≥ 50、C ≥ 25，其余为 D。MVP 是胜方评分最高的人，达到 93（IMP +30）为 SMVP。卡片底部汇总所选时间内获得的全部称号。雷达图和能力条是六项能力的 OpenDota 同英雄百分位，只描述打法风格，核心和辅助看的数据不同（悬停能力名可看具体口径），虚线、竖线为联赛平均。号位柱子高度为场次，金色部分为胜场，号位为 OpenDota 根据录像的估计。点卡片打开选手页，查看对线、死亡、场均数据、英雄池和比赛记录。`));
   const leagueDims = averageDims(matches.flatMap((match) => match.players));
   const range = rangeParams();
   const grid = el("div", { class: "player-grid" });

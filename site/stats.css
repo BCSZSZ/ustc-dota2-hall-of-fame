@@ -659,10 +659,6 @@
   color: var(--muted);
 }
 
-.pc-score .mvp {
-  margin-left: 0;
-}
-
 .pc-meta {
   color: var(--muted);
   font-size: 0.8rem;
@@ -1176,12 +1172,6 @@
   background: linear-gradient(135deg, #b30a26, #e19a22);
   box-shadow: 0 0 8px rgba(225, 154, 34, 0.6);
   text-shadow: 0 1px 1px rgba(80, 0, 0, 0.5);
-}
-
-.pc-titles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 4px;
 }
 
 .pc-dim-label {
@@ -1763,4 +1753,53 @@ a.player-card-head {
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0;
+}
+
+/* All titles a player earned in the selected range, across the full card width. */
+.pc-title-strip {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px 18px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.pc-title-total {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.pc-title-total strong {
+  margin-right: 3px;
+  color: var(--red-900);
+  font-size: 1.3rem;
+}
+
+.pc-title-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 5px;
+}
+
+.pc-title-group > b {
+  margin-right: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+}
+
+.pc-title-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.imp-sub {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 400;
 }

@@ -4,9 +4,9 @@ import { deathReview } from "./deaths.js?v=2";
 import { laneReview } from "./lanes.js?v=4";
 import { matchMap } from "./map.js?v=2";
 import {
-  IMP_TIP, LANE_TEXT, comebackTag, el, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
-  item, itemIcon, loadData, minutes, mvpBadge, playerLink, state, teamPanel,
-} from "./stats-core.js?v=5";
+  LANE_TEXT, comebackTag, el, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
+  item, itemIcon, loadData, minutes, mvpBadge, playerLink, scoreText, scoreTip, state, teamPanel,
+} from "./stats-core.js?v=6";
 
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
 const RANK_NAMES = { 1: "先锋", 2: "卫士", 3: "中军", 4: "统帅", 5: "传奇", 6: "万古流芳", 7: "超凡入圣", 8: "冠绝一世" };
@@ -134,7 +134,8 @@ function scoreboard(match, radiant) {
     el("tr", {},
       el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(match.smvp, match.mvpBasis) : null),
       el("td", {}, heroLabel(player.hero)),
-      el("td", { class: "num" }, gradeBadge(player), el("b", {}, impText(player.score))),
+      el("td", { class: "num", title: scoreTip(player) }, gradeBadge(player), el("b", {}, scoreText(player.score)),
+        Number.isFinite(player.imp) ? el("small", { class: "imp-sub" }, `IMP ${impText(player.imp)}`) : null),
       el("td", { class: "num" }, player.pos ? `${player.pos} 号位` : "—"),
       el("td", { class: "num" }, `${player.k}/${player.d}/${player.a}`),
       el("td", { class: "num" }, `${player.lh}/${player.dn}`),
@@ -155,7 +156,7 @@ function scoreboard(match, radiant) {
     el("h3", {}, radiant ? "天辉" : "夜魇", el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
       el("small", {}, `击杀 ${radiant ? match.radiant_score : match.dire_score}`)),
     el("div", { class: "table-scroll" }, el("table", { class: "data-table scoreboard" },
-      el("thead", {}, el("tr", {}, ["选手", "英雄", "IMP", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10′ 经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
+      el("thead", {}, el("tr", {}, ["选手", "英雄", "评分", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10′ 经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
       el("tbody", {}, rows))));
 }
 

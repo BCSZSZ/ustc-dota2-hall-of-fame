@@ -147,7 +147,7 @@ function playerRow(match, player) {
       el("span", { class: "pr-sub" }, hero(player.hero).name)),
     el("span", { class: "pr-kda", title: "击杀 / 死亡 / 助攻" },
       el("b", { class: "k" }, player.k ?? 0), "/", el("b", { class: "d" }, player.d ?? 0), "/", el("b", { class: "a" }, player.a ?? 0)),
-    el("span", { class: "pr-score", title: IMP_TIP }, gradeBadge(player), el("b", {}, impText(player.score))),
+    el("span", { class: "pr-score", title: scoreTip(player) }, gradeBadge(player), el("b", {}, scoreText(player.score))),
     el("span", { class: "pr-nw", title: `净值 ${(player.nw ?? 0).toLocaleString()} · GPM ${player.gpm ?? "—"}` },
       player.nw ? `${(player.nw / 1000).toFixed(1)}k` : "—"),
     el("span", { class: "pr-bottom" },
@@ -168,7 +168,7 @@ function teamPanel(match, radiant) {
       el("small", {}, `击杀 ${radiant ? match.radiant_score : match.dire_score} · 总净值 ${(worth / 1000).toFixed(1)}k`)),
     el("div", { class: "team-cols", "aria-hidden": "true" },
       el("span", { class: "pr-hero" }, "英雄"), el("span", { class: "pr-who" }, "选手"), el("span", { class: "pr-kda" }, "K/D/A"),
-      el("span", { class: "pr-score" }, "IMP"), el("span", { class: "pr-nw" }, "净值")),
+      el("span", { class: "pr-score" }, "评分"), el("span", { class: "pr-nw" }, "净值")),
     players.map((player) => playerRow(match, player)));
 }
 
@@ -186,11 +186,27 @@ const DIMENSIONS = [
   { key: "kill", label: "击杀", tip: "每分钟击杀（OpenDota 同英雄百分位）" },
 ];
 // IMP from STRATZ compares a player with others on the same hero and position in the match's
-// rank bracket; 0 is an average game. Grades and MVP use it; the six dimensions above only
-// describe playing style.
-const IMP_TIP = "STRATZ IMP：与同段位、同英雄、同号位玩家相比的表现，0 为平均水平";
+// rank bracket; 0 is an average game. The score, grades and MVP come from it; the six dimensions
+// above only describe playing style.
+//
+// The 0-100 score is 100·Φ(IMP / 20). League IMP is close to normal around STRATZ's 0 (130
+// players: mean −3.9, SD 19.3, skew 0.07; a normal with SD 20 is within 0.042 of its CDF), so the
+// score reads as the share of same-bracket games an IMP beats. The S-curve spreads the crowded
+// middle (about 2 points per IMP near 0) and squeezes the rare tails (+40 → 98). Grades are fixed
+// score bands, which are fixed IMP cut-offs: S ≥ 90 (+25.6), A ≥ 75 (+13.5), B ≥ 50 (0), C ≥ 25 (−13.5).
+const IMP_SD = 20;
+const IMP_TIP = "评分由 STRATZ IMP 换算：IMP 比较同段位、同英雄、同号位的玩家，0 为平均；评分约等于这局表现胜过的同类对局比例，50 为平均";
 const SMVP_IMP = 30;
-const GRADES = [["S", 25], ["A", 12], ["B", 0], ["C", -15], ["D", -Infinity]];
+const GRADES = [["S", 90], ["A", 75], ["B", 50], ["C", 25], ["D", -Infinity]];
+
+// Standard normal CDF (Abramowitz and Stegun 7.1.26, error below 1.5e-7).
+function normalCdf(z) {
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * x);
+  const erf = 1 - t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-x * x);
+  return z >= 0 ? (1 + erf) / 2 : (1 - erf) / 2;
+}
+const scoreOfImp = (imp) => (Number.isFinite(imp) ? 100 * normalCdf(imp / IMP_SD) : null);
 const TITLE_LIMIT = 4;
 
 const isSupport = (player) => player.pos === 4 || player.pos === 5;
@@ -242,7 +258,7 @@ function computeScores() {
   const overall = meanOf(scored.map((player) => player.base));
   const roleMean = new Map([1, 2, 3, 4, 5].map((pos) => [pos, meanOf(scored.filter((player) => player.pos === pos).map((player) => player.base))]));
   for (const player of players) {
-    player.score = Number.isFinite(player.imp) ? player.imp : null;
+    player.score = scoreOfImp(player.imp);
     player.relative = Number.isFinite(player.base) ? player.base - (roleMean.get(player.pos) ?? overall) : null;
     player.grade = gradeOf(player.score);
   }
@@ -265,8 +281,9 @@ function computeScores() {
 const isMvp = (match, player) => match.mvp === player.slot;
 const scoreText = (value) => (Number.isFinite(value) ? String(Math.round(value)) : "—");
 const impText = (value) => (Number.isFinite(value) ? `${value > 0 ? "+" : ""}${Math.round(value)}` : "—");
+const scoreTip = (player) => (Number.isFinite(player.imp) ? `IMP ${impText(player.imp)} · ${IMP_TIP}` : "STRATZ 还没给这场打分");
 const gradeBadge = (player) => (player.grade
-  ? el("span", { class: `grade grade-${player.grade}`, title: `评级 ${player.grade}（按 STRATZ IMP）：S ≥ +25，A ≥ +12，B ≥ 0，C ≥ −15，其余 D` }, player.grade)
+  ? el("span", { class: `grade grade-${player.grade}`, title: `评级 ${player.grade}：S ≥ 90（IMP ≥ +25.6），A ≥ 75（+13.5），B ≥ 50（0），C ≥ 25（−13.5），其余 D` }, player.grade)
   : null);
 // A match is a comeback when the winners' win chance dropped to this percentage or lower.
 const COMEBACK_CHANCE = 20;
@@ -286,9 +303,9 @@ const topOf = (match, player, value, floor = 0) => (value(player) ?? -Infinity) 
 // In priority order. Each title goes to at most one player per match: the most typical
 // qualifier by `pick`, or the next one if that player already holds four titles.
 const TITLES = [
-  { name: "SMVP", tip: "胜方 IMP 最高，且 IMP 达到 +30", test: (m, p) => isMvp(m, p) && m.smvp, pick: () => 0 },
-  { name: "MVP", tip: "胜方 IMP 最高的人（STRATZ 未评分的比赛改看六项能力高出同号位平均最多的人）", test: (m, p) => isMvp(m, p) && !m.smvp, pick: () => 0 },
-  { name: "带队翻盘", tip: "翻盘局里胜方 IMP 最高的人（胜方胜率曾跌到 20% 以下）", test: (m, p) => m.comeback !== null && m.comeback !== undefined &&
+  { name: "SMVP", tip: "胜方评分最高，且达到 93（IMP +30）", test: (m, p) => isMvp(m, p) && m.smvp, pick: () => 0 },
+  { name: "MVP", tip: "胜方评分最高的人（STRATZ 未打分的比赛改看六项能力高出同号位平均最多的人）", test: (m, p) => isMvp(m, p) && !m.smvp, pick: () => 0 },
+  { name: "带队翻盘", tip: "翻盘局里胜方评分最高的人（胜方胜率曾跌到 20% 以下）", test: (m, p) => m.comeback !== null && m.comeback !== undefined &&
     won(m, p) && Number.isFinite(p.imp) && rankIn(teamOf(m, p).filter((o) => Number.isFinite(o.imp)), p, (o) => o.imp) === 1, pick: (m, p) => p.imp },
   { name: "暴走", tip: "一波收下 4 个及以上人头", test: (m, p) => p.multi >= 4, pick: (m, p) => p.multi * 100 + p.k },
   { name: "超神", tip: "最高连杀达到 10", test: (m, p) => p.streak >= 10, pick: (m, p) => p.streak },
@@ -310,7 +327,7 @@ const TITLES = [
   { name: "眼", tip: "全场插眼最多", test: (m, p) => topOf(m, p, wardsOf, 1), pick: (m, p) => wardsOf(p) },
   { name: "稳", tip: "死亡不超过 3 次，且 KDA 至少 5", test: (m, p) => p.d <= 3 && kdaOf(p) >= 5, pick: (m, p) => kdaOf(p) * 100 - p.d },
   { name: "浪", tip: "击杀至少 7 次，死亡也至少 8 次", test: (m, p) => p.d >= 8 && p.k >= 7, pick: (m, p) => p.d * 100 + p.k },
-  { name: "躺", tip: "赢了，IMP 低于 −15（D 级）且在本队倒数前二", test: (m, p) => won(m, p) && Number.isFinite(p.imp) && p.imp < -15 &&
+  { name: "躺", tip: "赢了，评分 D 级（低于 25）且在本队倒数前二", test: (m, p) => won(m, p) && p.grade === "D" &&
     rankIn(teamOf(m, p).filter((o) => Number.isFinite(o.imp)), p, (o) => o.imp) >= 4, pick: (m, p) => -p.imp },
   { name: "僵", tip: "团战参与率不到 50%，输出也不到本队 15%", test: (m, p) => Number.isFinite(p.tf) && p.tf < 0.5 && damageShare(m, p) < 0.15,
     pick: (m, p) => -(p.tf + damageShare(m, p)) },
@@ -337,8 +354,8 @@ const TITLE_KIND = {
 };
 // What decided a match's MVP: STRATZ IMP, or the six-dimension score until STRATZ scores the match.
 const MVP_BASIS = {
-  imp: { label: "IMP", tip: "本场按 STRATZ IMP 评选" },
-  score: { label: "评分", tip: "STRATZ 还没给本场打分，暂按六项能力评分评选；STRATZ 打分后改按 IMP，MVP 可能换人" },
+  imp: { label: "IMP", tip: "本场按 STRATZ IMP 换算的评分评选" },
+  score: { label: "六项", tip: "STRATZ 还没给本场打分，暂按六项能力评选；STRATZ 打分后改按 IMP，MVP 可能换人" },
 };
 const titleChip = (name, count = 0, basis = null) => el("span", {
   class: `title-chip ${TITLE_KIND[name] || "stat"}${name.endsWith("MVP") ? " mvp" : ""}`,
@@ -438,6 +455,23 @@ function dimensionBars(dims, leagueDims) {
 
 // ---------- 选手卡片头部（列表和选手页共用） ----------
 
+const TITLE_GROUPS = [["honor", "荣誉"], ["stat", "数据"], ["roast", "吐槽"]];
+const titleOrder = new Map(TITLES.map(({ name }, index) => [name, index]));
+
+// Every title the player has earned, totalled over the selected matches and grouped by kind.
+function titleStrip(counts, games) {
+  const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
+  const groups = TITLE_GROUPS.map(([kind, label]) => {
+    const entries = [...counts.entries()].filter(([name]) => (TITLE_KIND[name] || "stat") === kind)
+      .sort((a, b) => b[0].endsWith("MVP") - a[0].endsWith("MVP") || b[1] - a[1] || titleOrder.get(a[0]) - titleOrder.get(b[0]));
+    return entries.length ? el("span", { class: `pc-title-group ${kind}` },
+      el("b", {}, label), entries.map(([name, count]) => titleChip(name, count))) : null;
+  });
+  return el("div", { class: "pc-title-strip" },
+    el("span", { class: "pc-title-total" }, el("strong", {}, total), `个称号 · ${games} 场`),
+    total ? groups : el("span", { class: "pc-title-empty" }, "还没有称号"));
+}
+
 function gamesOf(accountId, matches) {
   return matches.flatMap((match) => match.players
     .filter((player) => player.account_id === accountId)
@@ -450,9 +484,7 @@ function playerSummary(accountId, games, leagueDims) {
   const scored = mine.filter((player) => Number.isFinite(player.score));
   const titleCounts = new Map();
   for (const name of mine.flatMap((player) => player.titles || [])) titleCounts.set(name, (titleCounts.get(name) || 0) + 1);
-  const mvps = (titleCounts.get("MVP") || 0) + (titleCounts.get("SMVP") || 0);
   const mean = meanOf(scored.map((player) => player.score));
-  const topTitles = [...titleCounts.entries()].filter(([name]) => !name.endsWith("MVP")).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const lanes = laneSummary(games);
   const dims = averageDims(mine);
   return [
@@ -460,15 +492,15 @@ function playerSummary(accountId, games, leagueDims) {
       el("strong", { class: "pc-name" }, playerName(accountId)),
       el("span", { class: "pc-record" }, `${record(wins, games.length)} · ${winText(wins, games.length)}`),
       el("span", { class: "pc-score" },
-        el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "", title: IMP_TIP }, impText(mean)),
-        el("span", {}, "场均 IMP ", gradeBadge({ grade: gradeOf(mean) }), el("br"),
-          mvps ? [mvpBadge(), ` × ${mvps}`, titleCounts.get("SMVP") ? `（含 SMVP ${titleCounts.get("SMVP")}）` : ""] : "暂无 MVP")),
-      topTitles.length ? el("span", { class: "pc-titles" }, topTitles.map(([name, count]) => titleChip(name, count))) : null,
+        el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "", title: IMP_TIP }, scoreText(mean)),
+        el("span", {}, "场均评分 ", gradeBadge({ grade: gradeOf(mean) }), el("br"),
+          `IMP 均值 ${impText(meanOf(scored.map((player) => player.imp)))}`)),
       el("span", { class: "pc-meta" }, `K/D/A ${kda(mine).text}`),
       el("span", { class: "pc-meta" }, `GPM ${rounded(averageOf(mine, "gpm"))} · 线优 ${lanes.rated ? winText(lanes.win, lanes.rated) : "—"}`)),
     radar(dims, { size: 150, compare: leagueDims }),
     dimensionBars(dims, leagueDims),
     positionChart(games),
+    titleStrip(titleCounts, mine.length),
   ];
 }
 
@@ -556,7 +588,7 @@ export {
   DAY_SECONDS, MIN_RATE_GAMES, DIMENSIONS, LANE_ROLES, LANE_TEXT, IMP_TIP, TITLES,
   state, el, hero, item, playerName, isRadiant, won, minutes, picture, heroIcon, itemIcon, heroLabel, itemLabel,
   matchHref, playerHref, playerLink, formatDate, formatDuration, dateInput, record, rate, smoothed, percent, average,
-  kda, sortableTable, section, statCard, visibleMatches, playerRow, teamPanel, meanOf, isMvp, scoreText, impText, gradeBadge, comebackTag,
+  kda, sortableTable, section, statCard, visibleMatches, playerRow, teamPanel, meanOf, isMvp, scoreText, scoreTip, impText, gradeBadge, comebackTag,
   gradeOf, titleChip, chipsOf, averageDims, radar, mvpBadge, winText, laneSummary, averageOf, rounded, positionChart,
   dimensionBars, gamesOf, playerSummary, loadData, rangeParams, bindRange,
 };
