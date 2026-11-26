@@ -6,7 +6,7 @@ import { matchMap } from "./map.js?v=2";
 import {
   IMP_TIP, LANE_TEXT, comebackTag, el, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
   item, itemIcon, loadData, minutes, mvpBadge, playerLink, state, teamPanel,
-} from "./stats-core.js?v=4";
+} from "./stats-core.js?v=5";
 
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
 const RANK_NAMES = { 1: "先锋", 2: "卫士", 3: "中军", 4: "统帅", 5: "传奇", 6: "万古流芳", 7: "超凡入圣", 8: "冠绝一世" };
@@ -132,7 +132,7 @@ function scoreboard(match, radiant) {
   const teamWon = radiant === match.radiant_win;
   const rows = players.map((player) =>
     el("tr", {},
-      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(match.smvp) : null),
+      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(match.smvp, match.mvpBasis) : null),
       el("td", {}, heroLabel(player.hero)),
       el("td", { class: "num" }, gradeBadge(player), el("b", {}, impText(player.score))),
       el("td", { class: "num" }, player.pos ? `${player.pos} 号位` : "—"),

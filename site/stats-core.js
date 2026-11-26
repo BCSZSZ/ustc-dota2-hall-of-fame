@@ -154,7 +154,7 @@ function playerRow(match, player) {
       el("span", { class: "pr-items" },
         Array.from({ length: 6 }, (_, slot) => (player.items[slot] ? itemIcon(player.items[slot]) : el("span", { class: "item-img empty" }))),
         el("span", { class: "pr-neutral" }, player.neutral ? itemIcon(player.neutral) : el("span", { class: "item-img empty" }))),
-      el("span", { class: "pr-titles" }, titles.map((name) => titleChip(name)))));
+      el("span", { class: "pr-titles" }, chipsOf(match, player))));
 }
 
 function teamPanel(match, radiant) {
@@ -253,6 +253,7 @@ function computeScores() {
     const best = winners.sort((a, b) => value(b) - value(a))[0];
     match.mvp = best ? best.slot : null;
     match.smvp = Boolean(best && byImp && best.imp >= SMVP_IMP);
+    match.mvpBasis = best ? (byImp ? "imp" : "score") : null;
     // The lowest win chance the winners had, from STRATZ's per-minute Radiant win chance.
     const chances = match.win?.length ? match.win.map((chance) => (match.radiant_win ? chance : 100 - chance)) : null;
     match.comeback = chances && Math.min(...chances) <= COMEBACK_CHANCE ? Math.min(...chances) : null;
@@ -334,10 +335,17 @@ const TITLE_KIND = {
   拆: "stat", 壕: "stat", 就是干: "stat", 奶: "stat", 肉: "stat", 控: "stat", 眼: "stat", 一血: "stat",
   钢丝C: "roast", 刷了送: "roast", 我的: "roast", 打心底里佩服: "roast", 躺: "roast", 僵: "roast", 浪: "roast",
 };
-const titleChip = (name, count = 0) => el("span", {
+// What decided a match's MVP: STRATZ IMP, or the six-dimension score until STRATZ scores the match.
+const MVP_BASIS = {
+  imp: { label: "IMP", tip: "本场按 STRATZ IMP 评选" },
+  score: { label: "评分", tip: "STRATZ 还没给本场打分，暂按六项能力评分评选；STRATZ 打分后改按 IMP，MVP 可能换人" },
+};
+const titleChip = (name, count = 0, basis = null) => el("span", {
   class: `title-chip ${TITLE_KIND[name] || "stat"}${name.endsWith("MVP") ? " mvp" : ""}`,
-  title: `【${name}】${TITLE_TIPS[name]}`,
-}, count ? `${name} ×${count}` : name);
+  title: `【${name}】${TITLE_TIPS[name]}${basis ? `。${MVP_BASIS[basis].tip}` : ""}`,
+}, count ? `${name} ×${count}` : name, basis ? el("small", { class: "mvp-basis" }, MVP_BASIS[basis].label) : null);
+const chipsOf = (match, player) =>
+  (player.titles || []).map((name) => titleChip(name, 0, name.endsWith("MVP") ? match.mvpBasis : null));
 
 function averageDims(players) {
   return Object.fromEntries(DIMENSIONS.map(({ key }) => [key, meanOf(players.map((player) => player.dims?.[key]))]));
@@ -364,7 +372,9 @@ function radar(values, { size = 132, compare = null } = {}) {
   return figure;
 }
 
-const mvpBadge = (smvp = false) => el("span", { class: "mvp", title: TITLE_TIPS[smvp ? "SMVP" : "MVP"] }, smvp ? "SMVP" : "MVP");
+const mvpBadge = (smvp = false, basis = null) => el("span", {
+  class: "mvp", title: `${TITLE_TIPS[smvp ? "SMVP" : "MVP"]}${basis ? `。${MVP_BASIS[basis].tip}` : ""}`,
+}, smvp ? "SMVP" : "MVP", basis ? el("small", { class: "mvp-basis" }, MVP_BASIS[basis].label) : null);
 
 // ---------- 选手 ----------
 
@@ -547,6 +557,6 @@ export {
   state, el, hero, item, playerName, isRadiant, won, minutes, picture, heroIcon, itemIcon, heroLabel, itemLabel,
   matchHref, playerHref, playerLink, formatDate, formatDuration, dateInput, record, rate, smoothed, percent, average,
   kda, sortableTable, section, statCard, visibleMatches, playerRow, teamPanel, meanOf, isMvp, scoreText, impText, gradeBadge, comebackTag,
-  gradeOf, titleChip, averageDims, radar, mvpBadge, winText, laneSummary, averageOf, rounded, positionChart,
+  gradeOf, titleChip, chipsOf, averageDims, radar, mvpBadge, winText, laneSummary, averageOf, rounded, positionChart,
   dimensionBars, gamesOf, playerSummary, loadData, rangeParams, bindRange,
 };

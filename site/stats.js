@@ -4,7 +4,7 @@ import {
   MIN_RATE_GAMES, average, averageDims, bindRange, comebackTag, el, formatDate, formatDuration, hero, heroIcon, heroLabel, item, itemLabel, kda,
   loadData, matchHref, minutes, percent, playerHref, playerName, playerSummary, rangeParams, rate, record, section, smoothed,
   sortableTable, state, statCard, teamPanel, visibleMatches, won,
-} from "./stats-core.js?v=4";
+} from "./stats-core.js?v=5";
 
 function renderMatches(panel, matches) {
   panel.append(section("比赛", `共 ${matches.length} 场。卡片显示每位选手的英雄、号位、装备、STRATZ IMP、评级和本局称号，悬停称号或评级可看判定条件；胜方胜率曾跌到 20% 以下的比赛标“翻盘”；点“详情”打开这场比赛的页面，查看 BP、完整数据、出装时间、经济曲线、地图和死亡复盘。`));

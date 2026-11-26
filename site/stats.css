@@ -1753,3 +1753,14 @@ a.player-card-head {
 .jungle-slot {
   background: #fbf7ee;
 }
+
+/* Shows whether a match's MVP came from STRATZ IMP or the fallback score. */
+.mvp-basis {
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
