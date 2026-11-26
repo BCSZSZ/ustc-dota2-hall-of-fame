@@ -1,9 +1,9 @@
 const MATCH_SLOTS = [0, 1, 2, 3, 4, 128, 129, 130, 131, 132];
 const ELO_K = 50;
-const MIN_WIN_CHANCE = 0.45;
-const MAX_WIN_CHANCE = 0.55;
+const MIN_WIN_CHANCE = 0.4;
+const MAX_WIN_CHANCE = 0.6;
 const PLAN_LIMIT = 5;
-// Shown when no split reaches the 45%-55% range.
+// Shown when no split reaches the 40%-60% range.
 const FALLBACK_LIMIT = 3;
 const DIVERSITY_SLACK = 0.01;
 
@@ -229,8 +229,9 @@ export function findBalancedTeams(captainA, captainB, others) {
   }
 
   plans.sort(compareBalance);
+  // The bounds are inclusive; the tolerance absorbs floating-point error at exactly 40% or 60%.
   const qualifying = plans.filter(({ winChanceA }) =>
-    winChanceA >= MIN_WIN_CHANCE && winChanceA <= MAX_WIN_CHANCE);
+    winChanceA >= MIN_WIN_CHANCE - 1e-12 && winChanceA <= MAX_WIN_CHANCE + 1e-12);
   let shown = qualifying.length ? qualifying : plans.slice(0, FALLBACK_LIMIT);
   if (qualifying.length > PLAN_LIMIT) {
     const fifthBest = qualifying[PLAN_LIMIT - 1];

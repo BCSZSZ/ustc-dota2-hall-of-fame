@@ -1,4 +1,4 @@
-import { buildLeagueRoster, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=3";
+import { buildLeagueRoster, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=4";
 import { loadSharedMmr } from "./shared-mmr.js?v=1";
 
 const form = document.querySelector("#draftForm");
@@ -195,8 +195,8 @@ form.addEventListener("submit", async (event) => {
   const others = [...selected].map((id) => playersById.get(id));
   const result = findBalancedTeams(captainA, captainB, others);
   resultsSummary.textContent = result.withinRange === 0
-    ? `${result.examined} 套分法均超出 45%–55% 区间，显示最接近五五开的 ${result.plans.length} 套。`
-    : `${result.examined} 套分法中有 ${result.withinRange} 套在 45%–55% 区间，显示 ${result.plans.length} 套。`;
+    ? `${result.examined} 套分法均超出 40%–60% 区间，显示最接近五五开的 ${result.plans.length} 套。`
+    : `${result.examined} 套分法中有 ${result.withinRange} 套在 40%–60% 区间，显示 ${result.plans.length} 套。`;
   plans.replaceChildren(...result.plans.map(renderPlan));
   results.hidden = false;
   resultsTitle.focus({ preventScroll: true });

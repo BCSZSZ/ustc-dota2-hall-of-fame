@@ -215,7 +215,7 @@ test("keeps the closest split and caps diversity by the fifth-best plan's balanc
     3220, 3445, 3040, 3055, 3275, 3165, 3310, 3305, 3430, 3425,
   ]);
   const { plans, withinRange } = findBalancedTeams(captainA, captainB, others);
-  assert.equal(withinRange, 22);
+  assert.equal(withinRange, 36);
   // The fifth-best gap is 16. The 1 pp allowance admits a gap of 22 and excludes 24.
   assert.deepEqual(plans.map((plan) => plan.ratingGap), [6, 14, 16, 22, 22]);
 });
@@ -230,7 +230,7 @@ test("returns every qualifying split when there are at most five", () => {
 });
 
 test("accepts the two inclusive probability bounds and falls back to the three closest splits", () => {
-  const [captainA, captainB, ...others] = playersForRatings([0, 2000 * Math.log10(11 / 9), ...Array(8).fill(0)]);
+  const [captainA, captainB, ...others] = playersForRatings([0, 2000 * Math.log10(3 / 2), ...Array(8).fill(0)]);
   assert.equal(findBalancedTeams(captainA, captainB, others).withinRange, 70);
   assert.equal(findBalancedTeams(captainB, captainA, others).withinRange, 70);
 
