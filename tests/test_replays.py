@@ -369,8 +369,10 @@ def test_jungler_position_ganks_and_counterpart(tmp_path: Path) -> None:
     # slot 0 its support (4): slot 0 pairs with the Dire support and the jungler faces the Dire core, and back.
     assert json.loads((tmp_path / "positions.json").read_text()) == {"7": {
         "0": {"pos": 4, "source": "jungle", "opendota": 1}}}
-    assert (jungler["role"], jungler["opp"], jungler["opp_gold10"], jungler["result"]) == ("jungle", 128, 3000, None)
-    assert (row[0]["opp"], row[130]["opp"], row[128]["opp"], row[128]["opp_gold10"]) == (130, 0, 2, 3000)
+    # The jungler is grouped with top (Radiant's off lane) and counted there: 1000 + 3000 against 3000 + 1500 is a loss.
+    assert (jungler["lane"], jungler["group"], jungler["role"], jungler["kind"]) == ("jungle", "top", "off", "core")
+    assert (jungler["opp"], jungler["opp_gold10"], jungler["result"], row[0]["result"]) == (128, 3000, "L", "L")
+    assert (row[0]["opp"], row[130]["opp"], row[128]["opp"], row[128]["opp_gold10"], row[0]["kind"]) == (130, 0, 2, 3000, "support")
 
     # A manual position wins: as a support the jungler faces the Dire support instead.
     (tmp_path / "position_overrides.json").write_text(json.dumps({"7": {"2": 4, "0": 3}}))
@@ -383,5 +385,5 @@ def test_jungler_position_ganks_and_counterpart(tmp_path: Path) -> None:
     assert jungler["ganks"] == [[300, 339, "top", [128], 0], [450, 490, "bot", [], 1]]
     assert jungler["short_lane"] == ["top", 1, 2, "L"]
     assert jungler["roams"] == [] and row[0]["ganks"] is None and row[0]["short_lane"] is None
-    # The jungler's own death: 129 laned bot, the jungler counts as its own "lane", so any attacker is a ganker.
+    # The jungler's own death came from 129, who laned bot: another lane, so a gank.
     assert row[2]["deaths"] == [[480, "gank", [129]]]

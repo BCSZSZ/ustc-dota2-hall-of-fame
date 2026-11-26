@@ -1,6 +1,6 @@
 // Player page: player.html?id=<account_id>[&from=YYYY-MM-DD&to=YYYY-MM-DD].
 
-import { laneSlots } from "./lanes.js?v=4";
+import { laneSlots } from "./lanes.js?v=5";
 import {
   LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, kda,
   loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, scoreTip, section,

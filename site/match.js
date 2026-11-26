@@ -1,7 +1,7 @@
 // Match page: match.html?id=<match_id>.
 
 import { deathReview } from "./deaths.js?v=2";
-import { laneReview } from "./lanes.js?v=4";
+import { laneReview } from "./lanes.js?v=5";
 import { matchMap } from "./map.js?v=2";
 import {
   LANE_TEXT, comebackTag, el, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
@@ -147,10 +147,14 @@ function scoreboard(match, radiant) {
       el("td", { class: "num" }, player.gold10 === null || player.gold10 === undefined ? "—" : player.gold10.toLocaleString()),
       el("td", { class: "num" }, player.lane ? el("span", { class: `lane lane-${player.lane}` }, LANE_TEXT[player.lane]) : "—"),
       el("td", { class: "items" }, el("span", { class: "item-list" },
-        player.items.map(itemIcon),
-        player.neutral ? el("span", { class: "neutral" }, itemIcon(player.neutral)) : null,
-        player.scepter ? el("span", { class: "buff", title: "已吃神杖" }, "杖") : null,
-        player.shard ? el("span", { class: "buff", title: "已吃魔晶" }, "晶") : null)),
+        // The six inventory slots as in game, 3 x 2, then the neutral item and consumed buffs beside them.
+        el("span", { class: "item-grid" }, Array.from({ length: 6 }, (_, index) =>
+          (player.items[index] ? itemIcon(player.items[index]) : el("span", { class: "item-img empty" })))),
+        el("span", { class: "item-side" },
+          player.neutral ? el("span", { class: "neutral" }, itemIcon(player.neutral)) : null,
+          player.scepter || player.shard ? el("span", { class: "buffs" },
+            player.scepter ? el("span", { class: "buff", title: "已吃神杖" }, "杖") : null,
+            player.shard ? el("span", { class: "buff", title: "已吃魔晶" }, "晶") : null) : null))),
     ));
   return el("div", { class: `team ${radiant ? "radiant" : "dire"}` },
     el("h3", {}, radiant ? "天辉" : "夜魇", el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
