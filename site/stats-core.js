@@ -189,15 +189,19 @@ const DIMENSIONS = [
 // rank bracket; 0 is an average game. The score, grades and MVP come from it; the six dimensions
 // above only describe playing style.
 //
-// The 0-100 score is 100·Φ(IMP / 20). League IMP is close to normal around STRATZ's 0 (130
-// players: mean −3.9, SD 19.3, skew 0.07; a normal with SD 20 is within 0.042 of its CDF), so the
-// score reads as the share of same-bracket games an IMP beats. The S-curve spreads the crowded
-// middle (about 2 points per IMP near 0) and squeezes the rare tails (+40 → 98). Grades are fixed
-// score bands, which are fixed IMP cut-offs: S ≥ 90 (+25.6), A ≥ 75 (+13.5), B ≥ 50 (0), C ≥ 25 (−13.5).
-const IMP_SD = 20;
-const IMP_TIP = "评分由 STRATZ IMP 换算：IMP 比较同段位、同英雄、同号位的玩家，0 为平均；评分约等于这局表现胜过的同类对局比例，50 为平均";
+// The 0-100 score starts from a split normal CDF: 100·Φ(IMP / 20) at or above 0 and 100·Φ(IMP / 30)
+// below. League IMP is close to normal around STRATZ's 0 (130 players: mean −3.9, SD 19.3, skew 0.07;
+// a normal with SD 20 is within 0.042 of its CDF), so the upper half reads as the share of same-bracket
+// games an IMP beats; the wider lower half keeps poor games out of single digits. On top of that
+// every score gets +10, tapering to nothing at the top so it never passes 100: below 0 the score is
+// 10 + 100·Φ(IMP / 30) (10-60), from 0 up it is 60 + 80·(Φ(IMP / 20) − 0.5) (60-100).
+// Grades are fixed score bands, which are fixed IMP cut-offs: S ≥ 92 (+25.6), A ≥ 80 (+13.5),
+// B ≥ 60 (0), C ≥ 40 (−15.7).
+const IMP_SD_ABOVE = 20;
+const IMP_SD_BELOW = 30;
+const IMP_TIP = "评分由 STRATZ IMP 换算：IMP 比较同段位、同英雄、同号位的玩家，0 为平均，对应 60 分；高于平均按标准差 20 的正态换算并逐渐逼近 100，低于平均按标准差 30 放缓扣分，最低约 10 分";
 const SMVP_IMP = 30;
-const GRADES = [["S", 90], ["A", 75], ["B", 50], ["C", 25], ["D", -Infinity]];
+const GRADES = [["S", 92], ["A", 80], ["B", 60], ["C", 40], ["D", -Infinity]];
 
 // Standard normal CDF (Abramowitz and Stegun 7.1.26, error below 1.5e-7).
 function normalCdf(z) {
@@ -206,7 +210,10 @@ function normalCdf(z) {
   const erf = 1 - t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-x * x);
   return z >= 0 ? (1 + erf) / 2 : (1 - erf) / 2;
 }
-const scoreOfImp = (imp) => (Number.isFinite(imp) ? 100 * normalCdf(imp / IMP_SD) : null);
+function scoreOfImp(imp) {
+  if (!Number.isFinite(imp)) return null;
+  return imp < 0 ? 10 + 100 * normalCdf(imp / IMP_SD_BELOW) : 60 + 80 * (normalCdf(imp / IMP_SD_ABOVE) - 0.5);
+}
 const TITLE_LIMIT = 4;
 
 const isSupport = (player) => player.pos === 4 || player.pos === 5;
@@ -283,7 +290,7 @@ const scoreText = (value) => (Number.isFinite(value) ? String(Math.round(value))
 const impText = (value) => (Number.isFinite(value) ? `${value > 0 ? "+" : ""}${Math.round(value)}` : "—");
 const scoreTip = (player) => (Number.isFinite(player.imp) ? `IMP ${impText(player.imp)} · ${IMP_TIP}` : "STRATZ 还没给这场打分");
 const gradeBadge = (player) => (player.grade
-  ? el("span", { class: `grade grade-${player.grade}`, title: `评级 ${player.grade}：S ≥ 90（IMP ≥ +25.6），A ≥ 75（+13.5），B ≥ 50（0），C ≥ 25（−13.5），其余 D` }, player.grade)
+  ? el("span", { class: `grade grade-${player.grade}`, title: `评级 ${player.grade}：S ≥ 92（IMP ≥ +25.6），A ≥ 80（+13.5），B ≥ 60（0），C ≥ 40（−15.7），其余 D` }, player.grade)
   : null);
 // A match is a comeback when the winners' win chance dropped to this percentage or lower.
 const COMEBACK_CHANCE = 20;
@@ -303,7 +310,7 @@ const topOf = (match, player, value, floor = 0) => (value(player) ?? -Infinity) 
 // In priority order. Each title goes to at most one player per match: the most typical
 // qualifier by `pick`, or the next one if that player already holds four titles.
 const TITLES = [
-  { name: "SMVP", tip: "胜方评分最高，且达到 93（IMP +30）", test: (m, p) => isMvp(m, p) && m.smvp, pick: () => 0 },
+  { name: "SMVP", tip: "胜方评分最高，且达到 95（IMP +30）", test: (m, p) => isMvp(m, p) && m.smvp, pick: () => 0 },
   { name: "MVP", tip: "胜方评分最高的人（STRATZ 未打分的比赛改看六项能力高出同号位平均最多的人）", test: (m, p) => isMvp(m, p) && !m.smvp, pick: () => 0 },
   { name: "带队翻盘", tip: "翻盘局里胜方评分最高的人（胜方胜率曾跌到 20% 以下）", test: (m, p) => m.comeback !== null && m.comeback !== undefined &&
     won(m, p) && Number.isFinite(p.imp) && rankIn(teamOf(m, p).filter((o) => Number.isFinite(o.imp)), p, (o) => o.imp) === 1, pick: (m, p) => p.imp },
@@ -327,7 +334,7 @@ const TITLES = [
   { name: "眼", tip: "全场插眼最多", test: (m, p) => topOf(m, p, wardsOf, 1), pick: (m, p) => wardsOf(p) },
   { name: "稳", tip: "死亡不超过 3 次，且 KDA 至少 5", test: (m, p) => p.d <= 3 && kdaOf(p) >= 5, pick: (m, p) => kdaOf(p) * 100 - p.d },
   { name: "浪", tip: "击杀至少 7 次，死亡也至少 8 次", test: (m, p) => p.d >= 8 && p.k >= 7, pick: (m, p) => p.d * 100 + p.k },
-  { name: "躺", tip: "赢了，评分 D 级（低于 25）且在本队倒数前二", test: (m, p) => won(m, p) && p.grade === "D" &&
+  { name: "躺", tip: "赢了，评分 D 级（低于 40）且在本队倒数前二", test: (m, p) => won(m, p) && p.grade === "D" &&
     rankIn(teamOf(m, p).filter((o) => Number.isFinite(o.imp)), p, (o) => o.imp) >= 4, pick: (m, p) => -p.imp },
   { name: "僵", tip: "团战参与率不到 50%，输出也不到本队 15%", test: (m, p) => Number.isFinite(p.tf) && p.tf < 0.5 && damageShare(m, p) < 0.15,
     pick: (m, p) => -(p.tf + damageShare(m, p)) },
