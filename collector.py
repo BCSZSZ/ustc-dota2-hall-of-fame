@@ -5,6 +5,7 @@ import json
 import os
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,8 @@ from xml.etree import ElementTree
 import httpx
 from dotenv import load_dotenv
 
-from match_details import ensure_images, refresh_match_details
+from match_details import _read, ensure_images, refresh_match_details
+from replays import REPLAY_DIR, download_all, plan_downloads, record_downloads
 
 API_BASE_URL = "https://api.opendota.com/api"
 STEAM_COMMUNITY_URL = "https://steamcommunity.com"
@@ -514,18 +516,42 @@ def main(argv: list[str] | None = None) -> int:
             incremental=args.incremental,
             raw_by_id=raw_by_id,
         )
-        details = refresh_match_details(
-            data_dir=args.output.parent,
-            counted=payload["matches"],
+        data_dir = args.output.parent
+        match_ids = [match["match_id"] for match in payload["matches"]]
+        now = datetime.now(UTC)
+        replay_state = _read(data_dir / "pending.json")
+        replay_jobs = plan_downloads(
+            replay_dir=REPLAY_DIR,
+            match_ids=match_ids,
             raw_by_id=raw_by_id,
+            pending=replay_state.get("replays", {}),
+            unavailable=set(replay_state.get("replays_unavailable", [])),
             client=client,
             error_type=LeagueCollectionError,
-            refresh_constants=not args.incremental,
+            now=now,
         )
+        # Replay downloads run alongside the OpenDota parse requests and detail fetches.
+        with (
+            httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0), follow_redirects=True) as replay_http,
+            ThreadPoolExecutor(max_workers=1) as pool,
+        ):
+            downloads = pool.submit(download_all, replay_jobs, REPLAY_DIR, replay_http)
+            details = refresh_match_details(
+                data_dir=data_dir,
+                counted=payload["matches"],
+                raw_by_id=raw_by_id,
+                client=client,
+                error_type=LeagueCollectionError,
+                refresh_constants=not args.incremental,
+            )
+            replays = record_downloads(
+                data_dir=data_dir, jobs=replay_jobs, results=downloads.result(), match_ids=match_ids, now=now
+            )
     with httpx.Client(timeout=15.0, follow_redirects=True) as cdn:
         images = ensure_images(image_dir=args.output.parent.parent / "img", data_dir=args.output.parent, http=cdn)
     write_snapshot(args.output, payload)
     print(f"Images: {images} new hero/item images saved")
+    print(f"Replays: {replays['downloaded']} downloaded, {replays['waiting']} waiting for a retry")
     print(
         f"Match details: {details['summaries']} summaries, {details['fetched']} fetched, "
         f"{details['pending']} awaiting OpenDota parsing"

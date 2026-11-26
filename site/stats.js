@@ -1,3 +1,5 @@
+import { matchMap } from "./map.js";
+
 const DAY_SECONDS = 86400;
 const MIN_RATE_GAMES = 5;
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
@@ -180,20 +182,29 @@ function advantageChart(gold, xp) {
   return figure;
 }
 
-function renderTimeline(container, match) {
-  const data = details.get(match.match_id);
-  container.replaceChildren();
-  if (!data) {
-    container.append(el("p", { class: "draft-meta" }, "正在读取曲线……"));
-    fetch(`./data/matches/${match.match_id}.json`, { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : { gold_adv: [], xp_adv: [], objectives: [] }))
-      .catch(() => ({ gold_adv: [], xp_adv: [], objectives: [] }))
-      .then((payload) => {
-        details.set(match.match_id, payload);
-        renderTimeline(container, match);
-      });
-    return;
+function loadDetail(match) {
+  if (!details.has(match.match_id)) {
+    const empty = { gold_adv: [], xp_adv: [], objectives: [], wards: [] };
+    details.set(match.match_id, fetch(`./data/matches/${match.match_id}.json`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : empty))
+      .catch(() => empty));
   }
+  return details.get(match.match_id);
+}
+
+function renderMap(container, match) {
+  container.replaceChildren(el("p", { class: "draft-meta" }, "正在读取地图数据……"));
+  loadDetail(match).then((data) =>
+    container.replaceChildren(matchMap(match, data, { el, heroIcon, heroLabel, heroName: (id) => hero(id).name })));
+}
+
+function renderTimeline(container, match) {
+  container.replaceChildren(el("p", { class: "draft-meta" }, "正在读取曲线……"));
+  loadDetail(match).then((data) => drawTimeline(container, data));
+}
+
+function drawTimeline(container, data) {
+  container.replaceChildren();
   container.append(advantageChart(data.gold_adv || [], data.xp_adv || []));
   const events = (data.objectives || []).flatMap((objective) => {
     if (objective.type === "CHAT_MESSAGE_ROSHAN_KILL") {
@@ -257,6 +268,8 @@ function buildTimes(match) {
 function matchDetail(match) {
   const timeline = el("div", { class: "match-timeline" });
   renderTimeline(timeline, match);
+  const map = el("div", { class: "match-map-box" });
+  renderMap(map, match);
   const parseNote = match.parse === "parsed" ? null : el("p", { class: "parse-note" },
     match.parse === "pending"
       ? "OpenDota 还在解析这场录像，号位和装备时间暂缺，会自动重查。"
@@ -275,7 +288,9 @@ function matchDetail(match) {
     el("p", { class: "draft-meta" }, "只列合成装备和较贵的单件，显示首次购买的分钟；“终局”表示没有购买记录但终局持有。"),
     buildTimes(match),
     el("h3", {}, "经济与经验"),
-    timeline);
+    timeline,
+    el("h3", {}, "地图：英雄活动与视野"),
+    map);
 }
 
 const TALENT_LEVELS = { 1: 10, 2: 15, 3: 20, 4: 25 };

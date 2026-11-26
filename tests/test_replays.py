@@ -1,0 +1,120 @@
+import bz2
+import json
+from datetime import timedelta
+from pathlib import Path
+
+import httpx
+
+from match_details import build_constants, detail
+from replays import download_all, heat_todo, heatmap, plan_downloads, record_downloads, replay_path
+from test_match_details import HEROES, ITEMS, START, FakeClient, raw_match
+
+REPLAY = bz2.compress(b"PBDEMS2\0" + b"x" * 1000)
+
+
+def cdn(status: int = 200, body: bytes = REPLAY) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(status, content=body)))
+
+
+def test_replay_download_retries_after_1_2_4_8_hours_and_skips_until_due(tmp_path: Path) -> None:
+    replays = tmp_path / "replays"
+    client = FakeClient({"/matches/7": {"match_id": 7}})
+    now = START
+    gaps = []
+    for _ in range(5):
+        state = json.loads((tmp_path / "pending.json").read_text()) if (tmp_path / "pending.json").exists() else {}
+        jobs = plan_downloads(replay_dir=replays, match_ids=[7], raw_by_id={}, pending=state.get("replays", {}),
+                              unavailable=set(), client=client, error_type=KeyError, now=now)
+        assert jobs == [(7, None)]
+        record_downloads(data_dir=tmp_path, jobs=jobs, results=download_all(jobs, replays, cdn()), match_ids=[7], now=now)
+        due = json.loads((tmp_path / "pending.json").read_text())["replays"]["7"]["next_check_utc"]
+        gaps.append((START.fromisoformat(due) - now) / timedelta(hours=1))
+        now = START.fromisoformat(due)
+    assert gaps == [1, 2, 4, 8, 8]
+
+    state = json.loads((tmp_path / "pending.json").read_text())
+    early = plan_downloads(replay_dir=replays, match_ids=[7], raw_by_id={}, pending=state["replays"],
+                           unavailable=set(), client=client, error_type=KeyError, now=now - timedelta(minutes=5))
+    assert early == []
+
+
+def test_replay_download_keeps_complete_bzip2_and_clears_queue(tmp_path: Path) -> None:
+    replays = tmp_path / "replays"
+    url = "http://replay1.valve.net/570/7_1.dem.bz2"
+    (tmp_path / "pending.json").write_text(json.dumps({"matches": {}, "replays": {"7": {
+        "first_seen_utc": START.isoformat(), "attempts": 1, "next_check_utc": START.isoformat(), "replay_url": url}}}))
+    state = json.loads((tmp_path / "pending.json").read_text())
+    jobs = plan_downloads(replay_dir=replays, match_ids=[7], raw_by_id={}, pending=state["replays"],
+                          unavailable=set(), client=FakeClient({}), error_type=KeyError, now=START)
+    assert jobs == [(7, url)]
+
+    assert download_all(jobs, replays, cdn(body=b"<html>error</html>")) == {7: "not a bzip2 or zstd replay"}
+    assert replay_path(replays, 7) is None
+
+    zstd = b"\x28\xb5\x2f\xfd" + b"z" * 100
+    results = download_all(jobs, replays, cdn(body=zstd))
+    record_downloads(data_dir=tmp_path, jobs=jobs, results=results, match_ids=[7], now=START)
+    assert replay_path(replays, 7) == replays / "7.dem.zst"
+    assert replay_path(replays, 7).read_bytes() == zstd
+    assert json.loads((tmp_path / "pending.json").read_text())["replays"] == {}
+
+
+def test_replay_gives_up_after_a_week(tmp_path: Path) -> None:
+    (tmp_path / "pending.json").write_text(json.dumps({"replays": {"7": {
+        "first_seen_utc": START.isoformat(), "attempts": 5, "next_check_utc": START.isoformat()}}}))
+    later = START + timedelta(days=7, hours=1)
+    jobs = [(7, None)]
+    record_downloads(data_dir=tmp_path, jobs=jobs, results={7: "gone"}, match_ids=[7], now=later)
+    state = json.loads((tmp_path / "pending.json").read_text())
+    assert state["replays"] == {}
+    assert state["replays_unavailable"] == [7]
+
+
+def test_heatmap_counts_living_seconds_per_player_phase_and_cell() -> None:
+    entries = [
+        {"type": "interval", "time": -5, "slot": 0, "x": 100.0, "y": 100.0, "life_state": 0},
+        {"type": "interval", "time": 10, "slot": 0, "x": 100.4, "y": 101.9, "life_state": 0},
+        {"type": "interval", "time": 11, "slot": 0, "x": 100.9, "y": 100.2, "life_state": 0},
+        {"type": "interval", "time": 12, "slot": 0, "x": 100.9, "y": 100.2, "life_state": 2},
+        {"type": "interval", "time": 650, "slot": 7, "x": 64.0, "y": 191.9, "life_state": 0},
+        {"type": "DOTA_COMBATLOG_DAMAGE", "time": 20, "slot": 0},
+    ]
+    result = heatmap(entries)
+    assert result["players"] == {"0": [0, 18, 18, 2], "130": [1, 0, 63, 1]}
+    assert result["duration"] == 650
+
+
+def test_detail_pairs_wards_with_their_end_and_names_the_dewarder() -> None:
+    constants = build_constants({**HEROES, "2": {"id": 2, "name": "npc_dota_hero_axe", "localized_name": "Axe"}}, ITEMS)
+    raw = raw_match(7, parsed=True)
+    raw["duration"] = 2000
+    raw["players"][5]["hero_id"] = 2
+    raw["players"][0].update({
+        "obs_log": [{"time": 100, "x": 120.04, "y": 90.0, "ehandle": 11}, {"time": 500, "x": 130, "y": 95, "ehandle": 12},
+                    {"time": 1900, "x": 140, "y": 99, "ehandle": 13}],
+        "obs_left_log": [{"time": 460, "ehandle": 11, "attackername": "npc_dota_hero_antimage"},
+                         {"time": 620, "ehandle": 12, "attackername": "npc_dota_hero_axe"},
+                         {"time": 2000, "ehandle": 13, "attackername": "npc_dota_hero_axe"}],
+        "sen_log": [{"time": 300, "x": 110, "y": 110, "ehandle": 21}],
+        "lane_pos": {"100": {"100": 3, "101": 2}, "64": {"191": 1}},
+    })
+    result = detail(raw, constants)
+    assert result["wards"] == [
+        [0, 0, 100, 120.0, 90.0, 360, 0, None],
+        [1, 0, 300, 110, 110, None, 0, None],
+        [0, 0, 500, 130, 95, 120, 1, 128],
+        [0, 0, 1900, 140, 99, None, 0, None],
+    ]
+    assert result["lane_heat"]["players"]["0"] == [0, 0, 63, 1, 0, 18, 18, 5]
+
+
+def test_heat_todo_lists_archived_replays_without_a_heatmap(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    replays = tmp_path / "replays"
+    (data / "heat").mkdir(parents=True)
+    replays.mkdir()
+    (data / "matches.json").write_text(json.dumps({"matches": [{"match_id": 1}, {"match_id": 2}, {"match_id": 3}]}))
+    for match_id in (1, 2):
+        (replays / f"{match_id}.dem.bz2").write_bytes(REPLAY)
+    (data / "heat" / "1.json").write_text("{}")
+    assert heat_todo(replays, data) == [2]

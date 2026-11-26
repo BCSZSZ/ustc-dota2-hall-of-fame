@@ -11,8 +11,8 @@ from typing import Any, Protocol
 import httpx
 from PIL import Image
 
-# Bump when summaries gain fields; older summaries are refetched once.
-SUMMARY_VERSION = 4
+# Bump when summaries or detail files gain fields; older matches are refetched once.
+SUMMARY_VERSION = 5
 IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
 HERO_IMAGE_SIZE = (128, 72)
 ITEM_IMAGE_SIZE = (66, 48)
@@ -28,6 +28,11 @@ HERO_NAMES_ZH = Path(__file__).with_name("hero_names_zh.json")
 # Recheck unparsed matches after 1h, 2h, 4h, then every 8h until they are a week old.
 RETRY_HOURS = (1, 2, 4, 8)
 GIVE_UP_AFTER = timedelta(days=7)
+# Full ward lifetimes in seconds; a ward gone sooner was destroyed.
+WARD_SECONDS = {"obs": 360, "sen": 420}
+# Heatmap cells are 2x2 OpenDota map cells (the map spans cells 64-192), bucketed per 10 minutes.
+HEAT_BIN = 2
+HEAT_PHASE_SECONDS = 600
 BOOTS = {
     "tranquil_boots", "arcane_boots", "phase_boots", "power_treads", "boots_of_bearing",
     "guardian_greaves", "travel_boots", "travel_boots_2",
@@ -85,6 +90,7 @@ def build_constants(
         "heroes": {
             str(hero["id"]): {
                 "name": names_zh.get(str(hero["id"])) or hero.get("localized_name") or str(hero["id"]),
+                "key": hero.get("name") or "",
                 "en": hero.get("localized_name") or "",
                 "img": hero.get("img") or "",
             }
@@ -254,9 +260,59 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def detail(raw: dict[str, Any]) -> dict[str, Any]:
+def wards(raw: dict[str, Any], constants: dict[str, Any]) -> list[list[Any]]:
+    """[kind (0 observer, 1 sentry), owner slot, placed second, x, y, lifetime or None if alive at the end,
+    1 if destroyed early else 0, destroyer slot or None]."""
+    duration = raw.get("duration") or 0
+    slot_by_key = {
+        constants.get("heroes", {}).get(str(player.get("hero_id")), {}).get("key"): player.get("player_slot")
+        for player in raw.get("players") or []
+    }
+    rows = []
+    for player in raw.get("players") or []:
+        for kind, log in enumerate(("obs", "sen")):
+            gone_log = sorted(player.get(f"{log}_left_log") or [], key=lambda entry: entry.get("time", 0))
+            for placed in sorted(player.get(f"{log}_log") or [], key=lambda entry: entry.get("time", 0)):
+                gone = next(
+                    (entry for entry in gone_log
+                     if entry.get("ehandle") == placed.get("ehandle") and entry.get("time", 0) >= placed.get("time", 0)),
+                    None,
+                )
+                if gone is not None:
+                    gone_log.remove(gone)
+                    if gone["time"] >= duration - 1:
+                        gone = None
+                life = gone["time"] - placed["time"] if gone else None
+                destroyed = life is not None and life < WARD_SECONDS[log] - 2
+                rows.append([
+                    kind, player.get("player_slot"), placed.get("time"),
+                    round(placed.get("x", 0), 1), round(placed.get("y", 0), 1), life, int(destroyed),
+                    slot_by_key.get(gone.get("attackername")) if destroyed else None,
+                ])
+    return sorted(rows, key=lambda row: (row[2], row[1]))
+
+
+def lane_heat(raw: dict[str, Any]) -> dict[str, Any]:
+    """OpenDota's laning-phase positions (one sample per second up to 10:00) in the whole-game heatmap layout."""
+    players: dict[str, list[int]] = {}
+    for player in raw.get("players") or []:
+        counts: dict[tuple[int, int], int] = {}
+        for x, column in (player.get("lane_pos") or {}).items():
+            for y, seconds in column.items():
+                cell = ((int(x) - 64) // HEAT_BIN, (int(y) - 64) // HEAT_BIN)
+                counts[cell] = counts.get(cell, 0) + seconds
+        if counts:
+            players[str(player.get("player_slot"))] = [
+                value for (cx, cy), seconds in sorted(counts.items()) for value in (0, cx, cy, seconds)
+            ]
+    return {"bin": HEAT_BIN, "phase_seconds": HEAT_PHASE_SECONDS, "duration": 600, "players": players}
+
+
+def detail(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
     return {
         "match_id": raw["match_id"],
+        "wards": wards(raw, constants),
+        "lane_heat": lane_heat(raw),
         "gold_adv": raw.get("radiant_gold_adv") or [],
         "xp_adv": raw.get("radiant_xp_adv") or [],
         "objectives": [
@@ -288,6 +344,13 @@ def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat(timespec="seconds")
 
 
+def schedule_retry(entry: dict[str, Any], now: datetime) -> dict[str, Any]:
+    """Count one more failed check and wait 1, 2, 4, then 8 hours before the next one."""
+    attempts = entry["attempts"] + 1
+    delay = RETRY_HOURS[min(attempts, len(RETRY_HOURS)) - 1]
+    return {**entry, "attempts": attempts, "next_check_utc": _iso(now + timedelta(hours=delay))}
+
+
 def refresh_match_details(
     *,
     data_dir: Path,
@@ -302,7 +365,10 @@ def refresh_match_details(
     now = now or datetime.now(UTC)
     constants_path = data_dir / "constants.json"
     constants = _read(constants_path)
-    if refresh_constants or not constants.get("heroes") or "talents" not in constants:
+    stale = not constants.get("heroes") or "talents" not in constants or not all(
+        hero.get("key") for hero in constants["heroes"].values()
+    )
+    if refresh_constants or stale:
         try:
             constants = build_constants(
                 client.get_json("/constants/heroes"),
@@ -359,15 +425,13 @@ def refresh_match_details(
             if now - datetime.fromisoformat(entry["first_seen_utc"]) >= GIVE_UP_AFTER:
                 summary["parse"] = "unavailable"
             else:
-                attempts = entry["attempts"] + 1
-                delay = RETRY_HOURS[min(attempts, len(RETRY_HOURS)) - 1]
-                pending[key] = {**entry, "attempts": attempts, "next_check_utc": _iso(now + timedelta(hours=delay))}
+                pending[key] = schedule_retry(entry, now)
         summaries.append(summary)
-        _write(data_dir / "matches" / f"{match_id}.json", detail(raw))
+        _write(data_dir / "matches" / f"{match_id}.json", detail(raw, constants))
 
     summaries.sort(key=lambda item: (item["start_time"], item["match_id"]))
     _write(data_dir / "matches.json", {"schema_version": 1, "generated_at_utc": _iso(now), "matches": summaries})
-    _write(data_dir / "pending.json", {"matches": pending})
+    _write(data_dir / "pending.json", {**_read(data_dir / "pending.json"), "matches": pending})
     return {"summaries": len(summaries), "fetched": fetched, "pending": len(pending)}
 
 

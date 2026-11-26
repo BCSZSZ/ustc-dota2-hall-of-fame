@@ -5,7 +5,7 @@ from typing import Any
 
 from match_details import build_constants, refresh_match_details, summarise
 
-HEROES = {"1": {"id": 1, "localized_name": "Anti-Mage", "img": "/am.png"}}
+HEROES = {"1": {"id": 1, "name": "npc_dota_hero_antimage", "localized_name": "Anti-Mage", "img": "/am.png"}}
 ITEMS = {
     "blink": {"id": 1, "dname": "Blink Dagger", "cost": 2250, "qual": "component"},
     "black_king_bar": {"id": 116, "dname": "Black King Bar", "cost": 4050, "components": ["ogre_axe"]},

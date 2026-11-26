@@ -9,6 +9,7 @@ on:
       - "site/**"
       - "collector.py"
       - "match_details.py"
+      - "replays.py"
       - "hero_names_zh.json"
       - "mmr-api/**"
       - "requirements.txt"
@@ -78,9 +79,27 @@ jobs:
             python collector.py --league-id 19224 --output site/data/league.json --refresh-recent 5
           fi
 
+      - name: Turn archived replays into whole-game heatmaps
+        # A failed parse leaves the match on the laning-phase heatmap; the next run tries again.
+        continue-on-error: true
+        run: |
+          if [ "$(python replays.py todo)" = "0" ]; then
+            echo "Every archived replay already has a heatmap."
+            exit 0
+          fi
+          docker run -d --name replay-parser -p 5600:5600 \
+            odota/parser@sha256:e615dd38232b8ac6a47516787f7cdd6e8db10e92bd7354ea72c3b8ca7b1c987c
+          for attempt in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:5600/healthz && break
+            sleep 2
+          done
+          python replays.py parse
+
       - name: Persist refreshed data
         run: |
-          git add site/data site/img
+          git lfs install --local
+          git add site/data site/img .gitattributes
+          if [ -d replays ]; then git add replays; fi
           if git diff --cached --quiet; then
             echo "League data is unchanged."
             exit 0
