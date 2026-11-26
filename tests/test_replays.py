@@ -1,4 +1,5 @@
 import bz2
+import hashlib
 import json
 from datetime import timedelta
 from pathlib import Path
@@ -6,68 +7,113 @@ from pathlib import Path
 import httpx
 
 from match_details import build_constants, detail
-from replays import download_all, heat_todo, heatmap, plan_downloads, record_downloads, replay_path
+from replays import (
+    archive_all, fetch_archived, heat_todo, heatmap, plan_downloads, read_manifest, record_archives, release_tag,
+)
 from test_match_details import HEROES, ITEMS, START, FakeClient, raw_match
 
 REPLAY = bz2.compress(b"PBDEMS2\0" + b"x" * 1000)
+MATCH = {"match_id": 7, "start_time": int(START.timestamp())}
 
 
 def cdn(status: int = 200, body: bytes = REPLAY) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(status, content=body)))
 
 
-def test_replay_download_retries_after_1_2_4_8_hours_and_skips_until_due(tmp_path: Path) -> None:
+class FakeUploads:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.uploaded: list[tuple[str, str]] = []
+
+    def __call__(self, tag: str, path: Path) -> None:
+        if self.fail:
+            raise OSError("upload refused")
+        self.uploaded.append((tag, path.name))
+
+
+def plan(tmp_path: Path, client: FakeClient, now, **overrides):
+    state = json.loads((tmp_path / "pending.json").read_text()) if (tmp_path / "pending.json").exists() else {}
+    return plan_downloads(**{
+        "matches": [MATCH], "archived": read_manifest(tmp_path), "raw_by_id": {}, "pending": state.get("replays", {}),
+        "unavailable": set(state.get("replays_unavailable", [])), "client": client, "error_type": KeyError, "now": now,
+        **overrides,
+    })
+
+
+def test_replay_archive_retries_after_1_2_4_8_hours_and_skips_until_due(tmp_path: Path) -> None:
     replays = tmp_path / "replays"
     client = FakeClient({"/matches/7": {"match_id": 7}})
     now = START
     gaps = []
     for _ in range(5):
-        state = json.loads((tmp_path / "pending.json").read_text()) if (tmp_path / "pending.json").exists() else {}
-        jobs = plan_downloads(replay_dir=replays, match_ids=[7], raw_by_id={}, pending=state.get("replays", {}),
-                              unavailable=set(), client=client, error_type=KeyError, now=now)
-        assert jobs == [(7, None)]
-        record_downloads(data_dir=tmp_path, jobs=jobs, results=download_all(jobs, replays, cdn()), match_ids=[7], now=now)
+        jobs = plan(tmp_path, client, now)
+        assert jobs == [(7, None, "replays-2026")]
+        record_archives(data_dir=tmp_path, jobs=jobs, results=archive_all(jobs, replays, cdn(), FakeUploads()),
+                        match_ids=[7], now=now)
         due = json.loads((tmp_path / "pending.json").read_text())["replays"]["7"]["next_check_utc"]
         gaps.append((START.fromisoformat(due) - now) / timedelta(hours=1))
         now = START.fromisoformat(due)
     assert gaps == [1, 2, 4, 8, 8]
-
-    state = json.loads((tmp_path / "pending.json").read_text())
-    early = plan_downloads(replay_dir=replays, match_ids=[7], raw_by_id={}, pending=state["replays"],
-                           unavailable=set(), client=client, error_type=KeyError, now=now - timedelta(minutes=5))
-    assert early == []
+    assert plan(tmp_path, client, now - timedelta(minutes=5)) == []
 
 
-def test_replay_download_keeps_complete_bzip2_and_clears_queue(tmp_path: Path) -> None:
+def test_archive_uploads_valid_replays_and_records_them(tmp_path: Path) -> None:
     replays = tmp_path / "replays"
     url = "http://replay1.valve.net/570/7_1.dem.bz2"
-    (tmp_path / "pending.json").write_text(json.dumps({"matches": {}, "replays": {"7": {
-        "first_seen_utc": START.isoformat(), "attempts": 1, "next_check_utc": START.isoformat(), "replay_url": url}}}))
-    state = json.loads((tmp_path / "pending.json").read_text())
-    jobs = plan_downloads(replay_dir=replays, match_ids=[7], raw_by_id={}, pending=state["replays"],
-                          unavailable=set(), client=FakeClient({}), error_type=KeyError, now=START)
-    assert jobs == [(7, url)]
+    jobs = [(7, url, "replays-2026")]
 
-    assert download_all(jobs, replays, cdn(body=b"<html>error</html>")) == {7: "not a bzip2 or zstd replay"}
-    assert replay_path(replays, 7) is None
+    assert archive_all(jobs, replays, cdn(body=b"<html>error</html>"), FakeUploads()) == {7: "not a bzip2 or zstd replay"}
+    assert archive_all(jobs, replays, cdn(), FakeUploads(fail=True)) == {7: "upload refused"}
 
     zstd = b"\x28\xb5\x2f\xfd" + b"z" * 100
-    results = download_all(jobs, replays, cdn(body=zstd))
-    record_downloads(data_dir=tmp_path, jobs=jobs, results=results, match_ids=[7], now=START)
-    assert replay_path(replays, 7) == replays / "7.dem.zst"
-    assert replay_path(replays, 7).read_bytes() == zstd
+    (replays / "7.dem.bz2").unlink()  # the copy kept from the refused upload would otherwise be reused
+    uploads = FakeUploads()
+    results = archive_all(jobs, replays, cdn(body=zstd), uploads)
+    record_archives(data_dir=tmp_path, jobs=jobs, results=results, match_ids=[7], now=START)
+
+    assert uploads.uploaded == [("replays-2026", "7.dem.zst")]
+    assert read_manifest(tmp_path) == {"7": {"tag": "replays-2026", "asset": "7.dem.zst", "bytes": 104,
+                                              "sha256": hashlib.sha256(zstd).hexdigest()}}
     assert json.loads((tmp_path / "pending.json").read_text())["replays"] == {}
+    assert plan(tmp_path, FakeClient({}), START) == []
 
 
-def test_replay_gives_up_after_a_week(tmp_path: Path) -> None:
+def test_archive_gives_up_after_a_week(tmp_path: Path) -> None:
     (tmp_path / "pending.json").write_text(json.dumps({"replays": {"7": {
         "first_seen_utc": START.isoformat(), "attempts": 5, "next_check_utc": START.isoformat()}}}))
     later = START + timedelta(days=7, hours=1)
-    jobs = [(7, None)]
-    record_downloads(data_dir=tmp_path, jobs=jobs, results={7: "gone"}, match_ids=[7], now=later)
+    record_archives(data_dir=tmp_path, jobs=[(7, None, "replays-2026")], results={7: "gone"}, match_ids=[7], now=later)
     state = json.loads((tmp_path / "pending.json").read_text())
     assert state["replays"] == {}
     assert state["replays_unavailable"] == [7]
+
+
+def test_release_tag_groups_replays_by_year() -> None:
+    assert release_tag(int(START.timestamp())) == "replays-2026"
+
+
+def test_fetch_archived_downloads_from_the_release_and_checks_the_hash(tmp_path: Path) -> None:
+    entry = {"tag": "replays-2026", "asset": "7.dem.bz2", "bytes": len(REPLAY), "sha256": hashlib.sha256(REPLAY).hexdigest()}
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, content=REPLAY)
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    path = fetch_archived(http, entry, tmp_path, "owner/repo")
+    assert path.read_bytes() == REPLAY
+    assert seen == ["https://github.com/owner/repo/releases/download/replays-2026/7.dem.bz2"]
+    fetch_archived(http, entry, tmp_path, "owner/repo")
+    assert len(seen) == 1  # a verified local copy is reused
+
+    path.unlink()
+    try:
+        fetch_archived(cdn(body=b"corrupt"), entry, tmp_path, "owner/repo")
+        raise AssertionError("expected a checksum error")
+    except OSError as error:
+        assert "checksum" in str(error)
+    assert not path.exists()
 
 
 def test_heatmap_counts_living_seconds_per_player_phase_and_cell() -> None:
@@ -109,15 +155,11 @@ def test_detail_pairs_wards_with_their_end_and_names_the_dewarder() -> None:
 
 
 def test_heat_todo_lists_archived_replays_without_a_heatmap(tmp_path: Path) -> None:
-    data = tmp_path / "data"
-    replays = tmp_path / "replays"
-    (data / "heat").mkdir(parents=True)
-    replays.mkdir()
-    (data / "matches.json").write_text(json.dumps({"matches": [{"match_id": 1}, {"match_id": 2}, {"match_id": 3}]}))
-    for match_id in (1, 2):
-        (replays / f"{match_id}.dem.bz2").write_bytes(REPLAY)
-    (data / "heat" / "1.json").write_text("{}")
-    assert heat_todo(replays, data) == [2]
+    (tmp_path / "heat").mkdir()
+    (tmp_path / "matches.json").write_text(json.dumps({"matches": [{"match_id": 1}, {"match_id": 2}, {"match_id": 3}]}))
+    (tmp_path / "replays.json").write_text(json.dumps({"replays": {"1": {}, "2": {}}}))
+    (tmp_path / "heat" / "1.json").write_text("{}")
+    assert heat_todo(tmp_path) == [2]
 
 
 # Real odota/parser interval events for match 9098014345 (fields the heatmap reads), captured with the

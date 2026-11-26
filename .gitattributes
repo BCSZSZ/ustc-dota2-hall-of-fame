@@ -1,2 +1,0 @@
-replays/*.dem.bz2 filter=lfs diff=lfs merge=lfs -text
-replays/*.dem.zst filter=lfs diff=lfs merge=lfs -text

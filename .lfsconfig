@@ -1,3 +1,4 @@
 [lfs]
-	# Replays are archived for the workflow; clones and pulls skip them (fetch one with git lfs pull --include=<path> --exclude=).
+	# Replays were stored in Git LFS until they moved to Release assets; checkouts of those
+	# older commits skip them (fetch one with git lfs pull --include=<path> --exclude=).
 	fetchexclude = replays

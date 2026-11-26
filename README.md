@@ -6,7 +6,7 @@ Dota 2 内战联赛 19224 的公开战绩看板。
 - 只统计 2026-09-13（JST）起的比赛。截至 2026-11-26 出场过的选手为本队选手，此后的比赛至少要有一名本队选手才计入，计入后其中的新选手也成为本队选手。只在 9 月 13 日前出场的为隔壁选手。所有页面只使用计入的比赛
 - 用二维矩阵显示两名玩家的共同场数与组队胜率
 - [数据页](https://bcszsz.github.io/ustc-dota2-hall-of-fame/stats.html)分比赛、英雄与装备、选手三个标签。采集时把每场摘要写入 `site/data/matches.json`，经济曲线等明细写入 `site/data/matches/{id}.json`，英雄（中文名见 `hero_names_zh.json`）和装备常量写入 `site/data/constants.json`，英雄和用到的装备图片压缩成 WebP 存进 `site/img/`。选手卡片的对线结果按该路双方 10 分钟经济总和比较，领先 10% 以上为优。综合评分是六项能力的平均：核心看 GPM、正补、英雄伤害、建筑伤害、死亡、击杀的 OpenDota 同英雄百分位，辅助把前两项换成助攻和插眼、建筑伤害换成控制时长（插眼和控制在联赛辅助中比较），再按号位做随样本量收缩的修正（n/(n+50)）。评级 S ≥ 80、A ≥ 65、B ≥ 50、C ≥ 35，其余 D。MVP 是胜方中评分高出同号位平均最多者，高出 30 分以上为 SMVP。每局按优先级发放 21 个称号（规则在 `site/stats.js` 的 `TITLES`，页面上悬停可看条件），每个称号每局最多一人、每人最多四个；选手标签顶部有单场纪录墙。OpenDota 尚未解析录像的比赛记在 `site/data/pending.json`，按 1、2、4、8、8…小时由哨兵触发重查，7 天后放弃
-- 单场详情有小地图：英雄活动热力图和眼位分布。眼位来自 OpenDota 解析数据，按插眼和消失记录配对算出存活时间，不到满时长（假眼 6 分钟、真眼 7 分钟）就算被排，排眼者取自 `attackername`。热力图先用 OpenDota 的前 10 分钟位置（`lane_pos`）；采集时同时请求 OpenDota 和下载 Valve 录像，录像以 Git LFS 存进 `replays/`（国服集群是 zstd，存为 `.dem.zst`，其余为 `.dem.bz2`），失败同样按 1、2、4、8、8…小时重试，7 天后放弃。工作流用固定版本的 `odota/parser` 镜像解析录像，把每秒的存活位置汇总成 `site/data/heat/{id}.json`，页面检测到它就自动换成整局热力图，可按 10 分钟分段查看。LFS 下载流量算在仓库所有者的额度上，所以 `.lfsconfig` 默认排除 `replays/`，克隆和拉取都不下载录像，只留指针文件；需要某场录像时运行 `git lfs pull --include=replays/<文件名> --exclude=`（空的 `--exclude=` 不能省），`replays.py parse` 遇到指针会自动这样取
+- 单场详情有小地图：英雄活动热力图和眼位分布。眼位来自 OpenDota 解析数据，按插眼和消失记录配对算出存活时间，不到满时长（假眼 6 分钟、真眼 7 分钟）就算被排，排眼者取自 `attackername`。热力图先用 OpenDota 的前 10 分钟位置（`lane_pos`）；采集时同时请求 OpenDota 和下载 Valve 录像（国服集群是 zstd，存为 `.dem.zst`，其余为 `.dem.bz2`），下载后上传到当年的 GitHub Release（如 `replays-2026`）归档，并在 `site/data/replays.json` 记下文件名、大小和 SHA-256；下载或上传失败同样按 1、2、4、8、8…小时重试，7 天后放弃。Release 附件不计 LFS 额度，也不限下载流量，以后整批重新解析不花钱。工作流用固定版本的 `odota/parser` 镜像解析录像，把每秒的存活位置汇总成 `site/data/heat/{id}.json`，页面检测到它就自动换成整局热力图，可按 10 分钟分段查看。最早的 14 场曾存在 Git LFS（无法删除，仍占约 0.6 GB 额度），`.lfsconfig` 让旧提交的检出也不下载它们
 - 每 10 分钟由 `watch.yml` 检查 OpenDota 是否列出新比赛，有新比赛才触发增量采集（只抓新比赛）。每天 JST 10:00 另做一次完整刷新（昵称、段位、最近 5 场），并部署到 GitHub Pages
 - 默认使用匿名免费接口；匿名日额度耗尽后才使用可选的 `OPENDOTA_API_KEY`
 
@@ -24,7 +24,7 @@ OpenDota Key 只保存在本机 `.env` 或 GitHub Actions Secret 中，不会提
 
 ### 本地解析录像
 
-工作流用的是 `odota/parser` 的固定镜像。本地用同一时间的源码提交（`51c934f`）编译，需要 Java 21 和 Maven。启动后解析所有还没有热力图的录像，结果应与工作流生成的 `site/data/heat/` 逐字节相同。
+工作流用的是 `odota/parser` 的固定镜像。本地用同一时间的源码提交（`51c934f`）编译，需要 Java 21 和 Maven。启动后解析所有还没有热力图的录像，结果应与工作流生成的 `site/data/heat/` 逐字节相同。`replays.py parse` 会按清单从 Release 下载缺少的录像到本地 `replays/`（不进 git），并校验 SHA-256；只想取录像可以用 `python replays.py fetch`（加 `--match <ID>` 只取一场）。
 
 ```bash
 git clone https://github.com/odota/parser.git ~/Development/tools/odota-parser

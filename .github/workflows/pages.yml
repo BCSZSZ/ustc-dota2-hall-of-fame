@@ -71,6 +71,8 @@ jobs:
         env:
           OPENDOTA_API_KEY: ${{ secrets.OPENDOTA_API_KEY }}
           OPENDOTA_MAX_PAID_CALLS: "250"
+          # Uploads archived replays to the year's Release (contents: write).
+          GH_TOKEN: ${{ github.token }}
           MODE: ${{ inputs.mode || 'full' }}
         run: |
           if [ "$MODE" = "incremental" ]; then
@@ -97,9 +99,7 @@ jobs:
 
       - name: Persist refreshed data
         run: |
-          git lfs install --local
-          git add site/data site/img .gitattributes
-          if [ -d replays ]; then git add replays; fi
+          git add site/data site/img
           if git diff --cached --quiet; then
             echo "League data is unchanged."
             exit 0
