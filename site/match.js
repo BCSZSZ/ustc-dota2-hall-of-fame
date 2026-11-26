@@ -1,6 +1,7 @@
 // Match page: match.html?id=<match_id>.
 
 import { deathReview } from "./deaths.js?v=2";
+import { laneReview } from "./lanes.js?v=2";
 import { matchMap } from "./map.js?v=2";
 import {
   LANE_TEXT, SMVP_MARGIN, el, formatDate, formatDuration, hero, heroIcon, heroLabel, isMvp, isRadiant,
@@ -68,6 +69,12 @@ function renderMap(container, match) {
   container.replaceChildren(el("p", { class: "draft-meta" }, "正在读取地图数据……"));
   loadDetail(match).then((data) =>
     container.replaceChildren(matchMap(match, data, { el, heroIcon, heroLabel, heroName: (id) => hero(id).name })));
+}
+
+function renderLanes(container, match) {
+  container.replaceChildren(el("p", { class: "draft-meta" }, "正在读取对线数据……"));
+  loadDetail(match).then((data) => container.replaceChildren(
+    laneReview(match, data, { el, heroIcon, playerLink, heroName: (id) => hero(id).name })));
 }
 
 function renderTimeline(container, match) {
@@ -142,6 +149,8 @@ function matchDetail(match) {
   renderTimeline(timeline, match);
   const map = el("div", { class: "match-map-box" });
   renderMap(map, match);
+  const lanes = el("div", { class: "match-lanes-box" });
+  renderLanes(lanes, match);
   const parseNote = match.parse === "parsed" ? null : el("p", { class: "parse-note" },
     match.parse === "pending"
       ? "OpenDota 还在解析这场录像，号位和装备时间暂缺，会自动重查。"
@@ -156,6 +165,8 @@ function matchDetail(match) {
         heroIcon(heroId), el("small", {}, `${team === 0 ? "天辉" : "夜魇"}${isPick ? "选" : "禁"}`)))),
     scoreboard(match, true),
     scoreboard(match, false),
+    el("h3", {}, "对线"),
+    lanes,
     el("h3", {}, "装备购买时间"),
     el("p", { class: "draft-meta" }, "只列合成装备和较贵的单件，显示首次购买的分钟；“终局”表示没有购买记录但终局持有。"),
     buildTimes(match),

@@ -12,7 +12,7 @@ import httpx
 from PIL import Image
 
 # Bump when summaries or detail files gain fields; older matches are refetched once.
-SUMMARY_VERSION = 8
+SUMMARY_VERSION = 9
 IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
 HERO_IMAGE_SIZE = (128, 72)
 ITEM_IMAGE_SIZE = (66, 48)
@@ -350,9 +350,26 @@ def buybacks(raw: dict[str, Any]) -> list[list[Any]]:
     )
 
 
+# Per-minute laning series are kept up to this minute.
+SERIES_MINUTES = 15
+
+
+def series(raw: dict[str, Any]) -> dict[str, dict[str, list[int]]]:
+    """Each player's net worth, XP, last hits and denies at minutes 0..15."""
+    keys = {"gold": "gold_t", "xp": "xp_t", "lh": "lh_t", "dn": "dn_t"}
+    return {
+        str(player.get("player_slot")): {
+            key: list(player.get(source) or [])[: SERIES_MINUTES + 1] for key, source in keys.items()
+        }
+        for player in raw.get("players") or []
+        if any(player.get(source) for source in keys.values())
+    }
+
+
 def detail(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
     return {
         "match_id": raw["match_id"],
+        "series": series(raw),
         "deaths": deaths(raw),
         "buybacks": buybacks(raw),
         "wards": wards(raw, constants),

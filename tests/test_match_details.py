@@ -239,3 +239,13 @@ def test_detail_keeps_opendota_death_and_buyback_logs() -> None:
     result = detail(raw, build_constants(HEROES, ITEMS))
     assert result["deaths"] == [[0, 300, "npc_dota_hero_axe", 120, 18]]
     assert result["buybacks"] == [[128, 1500]]
+
+
+def test_detail_keeps_the_first_fifteen_minutes_of_each_series() -> None:
+    from match_details import detail
+
+    raw = raw_match(7, parsed=True)
+    raw["players"][0].update({"gold_t": list(range(0, 4000, 100)), "xp_t": [0, 5], "lh_t": [0, 1], "dn_t": [0, 0]})
+    result = detail(raw, build_constants(HEROES, ITEMS))
+    assert result["series"]["0"]["gold"] == list(range(0, 1600, 100))
+    assert result["series"]["0"]["xp"] == [0, 5]

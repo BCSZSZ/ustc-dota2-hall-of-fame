@@ -1,26 +1,16 @@
 // Player page: player.html?id=<account_id>[&from=YYYY-MM-DD&to=YYYY-MM-DD].
 
+import { laneSlots } from "./lanes.js?v=2";
 import {
-  LANE_ROLES, LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroLabel, kda,
-  laneSummary, loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, section,
-  smoothed, sortableTable, state, statCard, titleChip, visibleMatches, winText,
+  LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, kda,
+  loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, section,
+  smoothed, sortableTable, state, statCard, titleChip, visibleMatches,
 } from "./stats-core.js?v=2";
 
 function playerDetail(games, matches) {
   const everyone = matches.flatMap((match) => match.players);
   const mine = games.map((game) => game.player);
   const league = (key) => `联赛平均 ${rounded(averageOf(everyone, key))}`;
-  const lanes = laneSummary(games);
-  const leagueLanes = (() => {
-    const rated = everyone.filter((player) => player.lane);
-    return rated.length ? rated.filter((player) => player.lane === "W").length / rated.length : null;
-  })();
-
-  const laneRows = [1, 2, 3].map((role) => {
-    const list = games.filter((game) => game.player.lane_role === role);
-    return { role, list, lanes: laneSummary(list), wins: list.filter((game) => game.won).length };
-  }).filter((row) => row.list.length);
-
   const heroes = new Map();
   for (const game of games) {
     if (!heroes.has(game.player.hero)) heroes.set(game.player.hero, { id: game.player.hero, games: [], wins: 0 });
@@ -30,23 +20,7 @@ function playerDetail(games, matches) {
   }
 
   return el("div", { class: "player-detail" },
-    section("对线", "看 10 分钟时的情况。对线结果按该路双方选手 10 分钟经济总和比较，领先 10% 以上为优，落后 10% 以上为劣，其余为均。",
-      el("div", { class: "stat-cards" },
-        statCard("10 分钟经济", rounded(averageOf(mine, "gold10")), league("gold10")),
-        statCard("10 分钟正补", rounded(averageOf(mine, "lh10")), league("lh10")),
-        statCard("10 分钟经验", rounded(averageOf(mine, "xp10")), league("xp10")),
-        statCard("线优率", lanes.rated ? winText(lanes.win, lanes.rated) : "—",
-          `优 ${lanes.win} · 均 ${lanes.draw} · 劣 ${lanes.loss}${leagueLanes === null ? "" : ` · 联赛 ${Math.round(leagueLanes * 100)}%`}`)),
-      laneRows.length ? el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
-        el("thead", {}, el("tr", {}, ["分路", "场次", "优 / 均 / 劣", "线优率", "10 分钟经济", "10 分钟正补", "比赛胜负"].map((label) => el("th", { scope: "col" }, label)))),
-        el("tbody", {}, laneRows.map((row) => el("tr", {},
-          el("td", {}, LANE_ROLES[row.role]),
-          el("td", { class: "num" }, row.list.length),
-          el("td", { class: "num" }, `${row.lanes.win} / ${row.lanes.draw} / ${row.lanes.loss}`),
-          el("td", { class: "num" }, row.lanes.rated ? winText(row.lanes.win, row.lanes.rated) : "—"),
-          el("td", { class: "num" }, rounded(averageOf(row.list.map((game) => game.player), "gold10"))),
-          el("td", { class: "num" }, rounded(averageOf(row.list.map((game) => game.player), "lh10"))),
-          el("td", { class: "num" }, record(row.wins, row.list.length))))))) : null),
+    section("对线", null, laneSlots(games, { el, heroIcon, formatDate, heroName: (id) => hero(id).name })),
     section("场均数据", null, el("div", { class: "stat-cards" },
       statCard("K/D/A", kda(mine).text, `联赛平均 ${kda(everyone).text}`),
       statCard("GPM", rounded(averageOf(mine, "gpm")), league("gpm")),

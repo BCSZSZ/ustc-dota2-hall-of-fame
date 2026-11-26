@@ -268,3 +268,72 @@ def test_death_index_joins_opendota_log_with_replay_positions(tmp_path: Path) ->
     assert replayed[1]["killer"] == "npc_dota_goodguys_tower1_top"
     assert replayed[1]["buyback"] == 1 and replayed[1]["lost"] == ["roshan"]
     assert len(logged) == 3 and logged[0]["region"] is None and logged[0]["killer"] == 128
+
+
+def test_lane_events_from_real_parser_output_match_opendota_lanes() -> None:
+    import gzip
+
+    from replay_events import lane_events
+
+    with gzip.open(PARSER_FIXTURE, "rt", encoding="utf-8") as lines:
+        entries = [json.loads(line) for line in lines]
+    result = lane_events(entries)
+
+    # OpenDota's lane roles for this match, as physical lanes (Radiant safe = bot, Dire safe = top).
+    assert result["lanes"] == {"0": "bot", "1": "mid", "2": "top", "3": "top", "4": "bot",
+                               "128": "top", "129": "top", "130": "bot", "131": "mid", "132": "bot"}
+    assert result["roams"] == [[129, 471, 600, "bot"], [130, 506, 541, "top"]]
+    assert all(0 <= seconds <= 510 for seconds in result["away"].values())
+
+
+def test_lane_events_mark_junglers_and_ignore_short_visits() -> None:
+    from replay_events import LANE_ANCHORS, lane_events
+
+    top, mid = LANE_ANCHORS["top"], LANE_ANCHORS["mid"]
+    entries = []
+    for t in range(0, 601):
+        # Slot 0 lanes top, visits mid for 20 s at 3:00 and for 40 s at 6:00; slot 1 stays in the jungle.
+        visiting = 180 <= t < 200 or 360 <= t < 400
+        x, y = mid if visiting else top
+        entries.append({"type": "interval", "time": t, "slot": 0, "x": x, "y": y, "life_state": 0})
+        entries.append({"type": "interval", "time": t, "slot": 1, "x": 150.0, "y": 150.0, "life_state": 0})
+    result = lane_events(entries)
+    assert result["lanes"] == {"0": "top", "1": "jungle"}
+    assert result["roams"] == [[0, 360, 399, "mid"]]
+    assert result["away"] == {"0": 60}
+
+
+def test_lane_index_pairs_counterparts_and_classifies_laning_deaths(tmp_path: Path) -> None:
+    from replay_events import LANE_COLUMNS, REPLAY_VERSION, build_lane_index
+
+    (tmp_path / "matches").mkdir()
+    (tmp_path / "replay").mkdir()
+    players = [
+        {"slot": 0, "pos": 1, "lane_role": 1}, {"slot": 4, "pos": 5, "lane_role": 1}, {"slot": 1, "pos": 2, "lane_role": 2},
+        {"slot": 128, "pos": 3, "lane_role": 3}, {"slot": 132, "pos": 4, "lane_role": 3}, {"slot": 129, "pos": 2, "lane_role": 2},
+    ]
+    (tmp_path / "matches.json").write_text(json.dumps({"matches": [{"match_id": 7, "players": players}]}))
+    gold = {0: 4000, 4: 1500, 128: 3000, 132: 1000, 1: 3500, 129: 3600}
+    (tmp_path / "matches" / "7.json").write_text(json.dumps({
+        "series": {str(slot): {"gold": [0] * 10 + [value], "lh": list(range(11)), "xp": [0] * 11, "dn": [0] * 11}
+                   for slot, value in gold.items()},
+        "wards": [[0, 4, 30, 100, 100, 360, 0, None], [1, 4, 700, 100, 100, None, 0, None]],
+    }))
+    lanes = {"0": "bot", "4": "bot", "1": "mid", "128": "bot", "132": "bot", "129": "mid"}
+    (tmp_path / "replay" / "7.json").write_text(json.dumps({"v": REPLAY_VERSION, "lanes": lanes, "away": {}, "roams": [[4, 300, 340, "mid"]],
+        "deaths": [{"slot": 0, "t": 200, "attackers": [128]}, {"slot": 0, "t": 400, "attackers": [128, 129]},
+                   {"slot": 4, "t": 500, "attackers": [128, 132]}, {"slot": 128, "t": 900, "attackers": [0]}]}))
+    (tmp_path / "lane_overrides.json").write_text(json.dumps({"7": {"1": "mid"}}))
+
+    assert build_lane_index(tmp_path) == 6
+    index = json.loads((tmp_path / "lanes.json").read_text())
+    assert index["columns"] == LANE_COLUMNS
+    row = {r[1]: dict(zip(index["columns"], r)) for r in index["rows"]}
+    assert (row[0]["role"], row[0]["opp"], row[4]["opp"], row[128]["role"]) == ("safe", 128, 132, "off")
+    assert row[0]["result"] == "W" and row[0]["lane_diff"] == 1500 and row[128]["result"] == "L"
+    assert row[1]["source"] == "manual" and row[1]["result"] == "D"
+    assert row[0]["deaths"] == [[200, "solo", [128]], [400, "gank", [128, 129]]]
+    assert row[4]["deaths"] == [[500, "lane", [128, 132]]]
+    assert row[128]["kills"] == 3 and row[128]["deaths"] == []
+    assert (row[4]["obs"], row[4]["sen"], row[4]["roams"]) == (1, 0, [[300, 340, "mid"]])
+    assert row[0]["lh10"] == 10 and row[0]["opp_lh10"] == 10 and row[0]["gold10"] == 4000 and row[0]["opp_gold10"] == 3000

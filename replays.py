@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterable, Iterator
 import httpx
 
 from match_details import GIVE_UP_AFTER, HEAT_BIN, HEAT_PHASE_SECONDS, Client, _iso, _read, _write, schedule_retry
-from replay_events import REPLAY_VERSION, build_death_index, death_events
+from replay_events import REPLAY_VERSION, build_death_index, build_lane_index, death_events, lane_events
 
 REPO = os.getenv("GITHUB_REPOSITORY") or "BCSZSZ/ustc-dota2-hall-of-fame"
 # Local working copies; the archive itself is the Release assets listed in site/data/replays.json.
@@ -296,10 +296,17 @@ def parse_replays(replay_dir: Path, data_dir: Path, parser_url: str, repo: str =
                 print(f"::warning::{match_id}: parser returned no hero positions", file=sys.stderr)
                 continue
             _write(data_dir / "heat" / f"{match_id}.json", {"match_id": match_id, **heat})
-            _write(data_dir / "replay" / f"{match_id}.json",
-                   {"v": REPLAY_VERSION, "match_id": match_id, "deaths": death_events(entries, hero_keys)})
+            _write(data_dir / "replay" / f"{match_id}.json", {
+                "v": REPLAY_VERSION, "match_id": match_id, "deaths": death_events(entries, hero_keys), **lane_events(entries),
+            })
             done += 1
     return done
+
+
+def build_indexes(data_dir: Path) -> str:
+    """Rebuild the cross-match lane index first; the death index labels laning-phase deaths from it."""
+    lanes = build_lane_index(data_dir)
+    return f"lane index has {lanes} player-matches; death index has {build_death_index(data_dir)} deaths"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -316,9 +323,9 @@ def main(argv: list[str] | None = None) -> int:
         print(len(parse_todo(args.data_dir, args.redo)))
     elif args.command == "parse":
         done = parse_replays(args.replay_dir, args.data_dir, args.parser_url, args.repo, args.redo)
-        print(f"Replays: {done} parsed; death index has {build_death_index(args.data_dir)} deaths")
+        print(f"Replays: {done} parsed; {build_indexes(args.data_dir)}")
     elif args.command == "index":
-        print(f"Death index: {build_death_index(args.data_dir)} deaths")
+        print(build_indexes(args.data_dir))
     else:
         archived = read_manifest(args.data_dir)
         wanted = [str(match_id) for match_id in args.match] if args.match else list(archived)

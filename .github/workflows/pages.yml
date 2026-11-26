@@ -98,7 +98,7 @@ jobs:
             python replays.py parse
           fi
 
-      - name: Rebuild the cross-match death index
+      - name: Rebuild the cross-match lane and death indexes
         run: python replays.py index
 
       - name: Persist refreshed data

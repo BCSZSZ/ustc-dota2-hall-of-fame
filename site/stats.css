@@ -1459,3 +1459,268 @@ a.player-card-head {
   padding: 0;
   border-top: 0;
 }
+
+/* ---------- 对线 ---------- */
+
+.lane-D {
+  background: #b8862a;
+}
+
+.lane-review,
+.lane-slots {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.lane-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.lane-card,
+.lane-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffdf7;
+}
+
+.lane-card h4,
+.lane-slot h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  color: var(--red-900);
+  font-size: 1.05rem;
+}
+
+.lane-card h4 small,
+.lane-slot h4 small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.lane-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.lane-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.lane-side.radiant {
+  background: rgba(35, 122, 59, 0.08);
+}
+
+.lane-side.dire {
+  background: rgba(163, 38, 27, 0.08);
+}
+
+.lane-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lane-chart {
+  margin: 0;
+}
+
+.lane-chart svg {
+  width: 100%;
+  max-width: 720px;
+  height: auto;
+  font-size: 11px;
+}
+
+.lane-chart text {
+  fill: var(--muted);
+}
+
+.lane-chart .grid {
+  stroke: var(--line);
+}
+
+.lane-chart .zero {
+  stroke: var(--muted);
+  stroke-dasharray: 4 4;
+}
+
+.lane-chart polyline {
+  fill: none;
+  stroke-width: 1.8;
+}
+
+.lane-chart polyline.total,
+.key.total::before {
+  stroke: var(--red-800);
+  background: var(--red-800);
+}
+
+.lane-chart polyline.total {
+  stroke-width: 3;
+}
+
+.lane-chart polyline.pair-0,
+.key.pair-0::before {
+  stroke: #4a6fb5;
+  background: #4a6fb5;
+}
+
+.lane-chart polyline.pair-1,
+.key.pair-1::before {
+  stroke: var(--gold-700);
+  background: var(--gold-700);
+}
+
+.lane-chart polyline.pair-2,
+.key.pair-2::before {
+  stroke: #6b8e23;
+  background: #6b8e23;
+}
+
+.lane-chart figcaption {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.lane-events {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 20px;
+  font-size: 0.88rem;
+}
+
+.lane-events ul {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lane-events li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-left: 6px;
+}
+
+.lane-events li.radiant {
+  box-shadow: inset 3px 0 #2f8f46;
+}
+
+.lane-events li.dire {
+  box-shadow: inset 3px 0 #b23a2b;
+}
+
+.lane-events .hero-img,
+.lane-heroes .hero-img {
+  width: 40px;
+  height: 23px;
+}
+
+.death-tag.kind-gank {
+  border-color: var(--red-700);
+  color: var(--red-800);
+  font-weight: 700;
+}
+
+.lane-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .lane-slot-grid,
+  .lane-sides,
+  .lane-events {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.lane-slot.empty {
+  align-content: start;
+  background: repeating-linear-gradient(135deg, #fffdf7 0 10px, #fbf4e6 10px 20px);
+}
+
+.lane-stats {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.lane-stats dt {
+  color: var(--muted);
+}
+
+.lane-stats dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.lane-heroes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lane-heroes span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.lane-trend {
+  margin: 0;
+}
+
+.lane-trend svg {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}
+
+.lane-trend .zero {
+  stroke: var(--muted);
+  stroke-dasharray: 3 3;
+}
+
+.lane-trend circle.dot-W {
+  fill: #237a3b;
+}
+
+.lane-trend circle.dot-L {
+  fill: #a3261b;
+}
+
+.lane-trend circle.dot-D,
+.lane-trend circle.dot-N {
+  fill: #b8862a;
+}
+
+.lane-trend figcaption {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
