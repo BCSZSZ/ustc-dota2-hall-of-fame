@@ -556,21 +556,28 @@ function positionChart(games) {
     return { pos, games: list.length, wins: list.filter((game) => game.won).length, top };
   });
   const peak = Math.max(1, ...rows.map((row) => row.games));
-  const small = (games) => (games < MIN_RATE_GAMES ? " small-sample" : "");
-  return el("div", { class: "pc-positions" },
-    el("div", { class: "pc-columns", "aria-hidden": "true" }, rows.map((row) =>
-      el("div", { class: "pc-column" },
-        el("span", { class: "pc-count" }, row.games ? `${row.games}场` : ""),
+  return el("div", { class: "pc-positions" }, rows.map((row) =>
+    el("div", { class: `pc-position${row.games ? "" : " empty"}` },
+      el("span", { class: "pc-count" }, row.games ? `${row.games} 场` : ""),
+      el("span", { class: "pc-track" },
         el("span", { class: "pc-bar", style: `height:${(row.games / peak) * 100}%` },
-          el("i", { style: `height:${row.games ? (row.wins / row.games) * 100 : 0}%` })),
-        el("span", { class: "pc-label" }, `${row.pos}号位`)))),
-    el("ul", { class: "pc-rows" }, rows.filter((row) => row.games).map((row) =>
-      el("li", {},
-        el("span", { class: "pc-pos" }, `${row.pos}号位`),
-        el("span", { class: `pc-rate${small(row.games)}`, title: record(row.wins, row.games) }, winText(row.wins, row.games)),
-        el("span", { class: "pc-heroes" }, row.top.map((entry) =>
-          el("span", { class: "pc-hero", title: `${hero(entry.id).name} ${record(entry.wins, entry.games)}` },
-            heroIcon(entry.id), el("small", {}, `${entry.wins}-${entry.games - entry.wins}`))))))));
+          el("i", { style: `height:${row.games ? (row.wins / row.games) * 100 : 0}%` }))),
+      el("span", { class: "pc-label" }, `${row.pos} 号位`),
+      el("span", { class: `pc-rate${row.games && row.games < MIN_RATE_GAMES ? " small-sample" : ""}`, title: row.games ? record(row.wins, row.games) : "" },
+        row.games ? winText(row.wins, row.games) : "—"),
+      el("span", { class: "pc-heroes" }, row.top.map((entry) =>
+        el("span", { class: "pc-hero", title: `${hero(entry.id).name} ${record(entry.wins, entry.games)}` },
+          heroIcon(entry.id), el("small", {}, `${entry.wins}-${entry.games - entry.wins}`)))))));
+}
+
+function dimensionBars(dims, leagueDims) {
+  return el("div", { class: "pc-dims" }, DIMENSIONS.map(({ key, label }) =>
+    el("div", { class: "pc-dim" },
+      el("span", { class: "pc-dim-label" }, label),
+      el("span", { class: "dim-bar" },
+        el("i", { style: `width:${dims[key] ?? 0}%` }),
+        Number.isFinite(leagueDims[key]) ? el("b", { style: `left:${leagueDims[key]}%`, title: `联赛平均 ${scoreText(leagueDims[key])}` }) : null),
+      el("span", { class: "num" }, scoreText(dims[key])))));
 }
 
 function playerDetail(games, matches) {
@@ -596,20 +603,7 @@ function playerDetail(games, matches) {
     row.wins += game.won ? 1 : 0;
   }
 
-  const dims = averageDims(mine);
-  const leagueDims = averageDims(everyone);
   return el("div", { class: "player-detail" },
-    section("综合表现",
-      "经济、输出、推进、生存，以及核心的发育（正补、经验）取 OpenDota 与全网同英雄玩家相比的百分位；4、5 号位的发育换成视野（插眼、堆野、控制时长在联赛辅助中的百分位）；参与为团战参与率在联赛中的百分位。综合评分是六项的平均，每场最高者为 MVP。",
-      el("div", { class: "score-detail" },
-        radar(dims, { size: 220, compare: leagueDims }),
-        el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
-          el("thead", {}, el("tr", {}, ["能力", "百分位", "联赛平均"].map((label) => el("th", { scope: "col" }, label)))),
-          el("tbody", {}, DIMENSIONS.map(({ key, label }) => el("tr", {},
-            el("td", {}, label),
-            el("td", { class: "num" }, el("span", { class: "dim-bar" }, el("i", { style: `width:${dims[key] ?? 0}%` })), scoreText(dims[key])),
-            el("td", { class: "num" }, scoreText(leagueDims[key])))))))),
-      el("p", { class: "draft-meta" }, "雷达图实线为该选手，虚线为联赛平均。")),
     section("对线", "看 10 分钟时的情况。对线结果按该路双方选手 10 分钟经济总和比较，领先 10% 以上为优，落后 10% 以上为劣，其余为均。",
       el("div", { class: "stat-cards" },
         statCard("10 分钟经济", rounded(averageOf(mine, "gold10")), league("gold10")),
@@ -670,7 +664,8 @@ function renderPlayers(panel, matches) {
   const roster = [...byPlayer.entries()].sort((a, b) =>
     b[1].length - a[1].length || playerName(a[0]).localeCompare(playerName(b[0]), "zh-CN"));
   panel.append(recordWall(matches));
-  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。综合评分为六项能力百分位的平均，详见卡片展开后的说明。柱子高度为该号位场次，金色部分为胜场；号位为 OpenDota 根据录像的估计。点开卡片查看对线和详细数据。`));
+  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。综合评分是六项能力百分位的平均，每场最高者为 MVP：经济、输出、推进、生存，以及核心的发育（正补、经验）取 OpenDota 与全网同英雄玩家相比的百分位；4、5 号位的发育换成视野（插眼、堆野、控制时长在联赛辅助中的百分位）；参与为团战参与率在联赛中的百分位。雷达图和能力条里的虚线、竖线为联赛平均。号位柱子高度为场次，金色部分为胜场，号位为 OpenDota 根据录像的估计。点开卡片查看对线、场均数据、英雄池和比赛记录。`));
+  const leagueDims = averageDims(matches.flatMap((match) => match.players));
   const grid = el("div", { class: "player-grid" });
   for (const [accountId, games] of roster) {
     const open = state.player === accountId;
@@ -686,22 +681,25 @@ function renderPlayers(panel, matches) {
           render();
         },
       },
-      el("span", { class: "pc-title" },
-        el("strong", {}, playerName(accountId)),
-        el("span", { class: "pc-record" }, `${record(wins, games.length)} · ${winText(wins, games.length)}`)),
       (() => {
         const scored = mine.filter((player) => Number.isFinite(player.score));
         const mvps = games.filter((game) => isMvp(game.match, game.player)).length;
-        return el("span", { class: "pc-summary" },
-          radar(averageDims(mine)),
-          el("span", { class: "pc-score" },
-            el("span", { class: "pc-score-label" }, "综合评分"),
-            el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "" }, scoreText(meanOf(scored.map((player) => player.score)))),
-            el("span", { class: "pc-mvps" }, mvps ? [mvpBadge(), ` × ${mvps}`] : "暂无 MVP"),
+        const lanes = laneSummary(games);
+        const dims = averageDims(mine);
+        return [
+          el("span", { class: "pc-identity" },
+            el("strong", { class: "pc-name" }, playerName(accountId)),
+            el("span", { class: "pc-record" }, `${record(wins, games.length)} · ${winText(wins, games.length)}`),
+            el("span", { class: "pc-score" },
+              el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "" }, scoreText(meanOf(scored.map((player) => player.score)))),
+              el("span", {}, "综合评分", el("br"), mvps ? [mvpBadge(), ` × ${mvps}`] : "暂无 MVP")),
             el("span", { class: "pc-meta" }, `K/D/A ${kda(mine).text}`),
-            el("span", { class: "pc-meta" }, `GPM ${rounded(averageOf(mine, "gpm"))}`)));
-      })(),
-      positionChart(games)));
+            el("span", { class: "pc-meta" }, `GPM ${rounded(averageOf(mine, "gpm"))} · 线优 ${lanes.rated ? winText(lanes.win, lanes.rated) : "—"}`)),
+          radar(dims, { size: 150, compare: leagueDims }),
+          dimensionBars(dims, leagueDims),
+          positionChart(games),
+        ];
+      })()));
     if (open) card.append(playerDetail(games, matches));
     grid.append(card);
   }
