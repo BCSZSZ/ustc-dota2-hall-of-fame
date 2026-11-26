@@ -1,4 +1,4 @@
-import { buildLeagueRoster, describeRankTier, estimateRankMmr } from "./matchmaker-model.js?v=4";
+import { buildLeagueRoster, describeRankTier, estimateRankMmr } from "./matchmaker-model.js?v=5";
 import { loadSharedMmr, saveSharedMmr } from "./shared-mmr.js?v=1";
 
 const form = document.querySelector("#mmrForm");

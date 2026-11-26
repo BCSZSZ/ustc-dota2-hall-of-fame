@@ -1,4 +1,4 @@
-import { buildLeagueRoster, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=4";
+import { buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=5";
 import { loadSharedMmr } from "./shared-mmr.js?v=1";
 
 const form = document.querySelector("#draftForm");
@@ -15,6 +15,7 @@ const results = document.querySelector("#draftResults");
 const resultsTitle = document.querySelector("#draftResultsTitle");
 const resultsSummary = document.querySelector("#draftResultsSummary");
 const plans = document.querySelector("#draftPlans");
+const calibrationNote = document.querySelector("#calibrationNote");
 
 const memberCount = 8;
 const selected = new Set();
@@ -23,6 +24,7 @@ const decimal = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat("zh-CN", { style: "percent", minimumFractionDigits: 1 });
 let snapshot;
 let sharedState;
+let calibration;
 let roster = [];
 let playersById = new Map();
 
@@ -193,7 +195,7 @@ form.addEventListener("submit", async (event) => {
   if (inputs.disabled || submit.disabled) return;
   const [captainA, captainB] = captainIds().map((id) => playersById.get(id));
   const others = [...selected].map((id) => playersById.get(id));
-  const result = findBalancedTeams(captainA, captainB, others);
+  const result = findBalancedTeams(captainA, captainB, others, { scale: calibration.applied.scale });
   resultsSummary.textContent = result.withinRange === 0
     ? `${result.examined} 套分法均超出 40%–60% 区间，显示最接近五五开的 ${result.plans.length} 套。`
     : `${result.examined} 套分法中有 ${result.withinRange} 套在 40%–60% 区间，显示 ${result.plans.length} 套。`;
@@ -213,8 +215,27 @@ async function refreshSharedScores() {
   }
 }
 
+function describeHalfWeight(games) {
+  return Number.isFinite(games) ? `${games} 场时采纳一半` : "不采纳内战修正";
+}
+
+function renderCalibration() {
+  const { matches, fitted, scaleInterval, status, applied } = calibration;
+  const fit = fitted
+    ? `历史拟合：尺度 ${fitted.scale}（95% 区间 ${scaleInterval[0]}–${scaleInterval[1]}${scaleInterval[1] >= 1200 ? " 以上" : ""}），内战修正 ${describeHalfWeight(fitted.halfWeightGames)}。`
+    : "";
+  const state = {
+    collecting: `满 50 场后开始采用拟合尺度，满 100 场且明显更优时才调整内战修正。`,
+    uncertain: `已满 50 场，但尺度区间还没收窄，暂不采用。`,
+    applied: `已采用拟合尺度（向默认值 400 收缩）。`,
+  }[status];
+  calibrationNote.textContent = `模型校准：按联赛历史逐场回测，现有 ${matches} 场。${fit}${state}当前使用尺度 ${applied.scale}，内战修正 ${describeHalfWeight(applied.halfWeightGames)}。`;
+}
+
 function renderRoster(sharedStatus) {
-  roster = buildLeagueRoster(snapshot, sharedState?.ratings)
+  calibration = calibrateModel(snapshot, sharedState?.ratings);
+  renderCalibration();
+  roster = buildLeagueRoster(snapshot, sharedState?.ratings, calibration.applied)
     .filter((player) => Number.isFinite(player.rating))
     .sort((left, right) => left.name.localeCompare(right.name, "zh-CN") || left.accountId - right.accountId);
   playersById = new Map(roster.map((player) => [player.accountId, player]));

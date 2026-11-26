@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildLeagueRoster, describeRankTier, estimateRankMmr, findBalancedTeams } from "../site/matchmaker-model.js";
+import { buildLeagueRoster, calibrateModel, DEFAULT_MODEL, describeRankTier, estimateRankMmr, findBalancedTeams } from "../site/matchmaker-model.js";
 
 function match(matchId, startTime, radiantWin, firstAccountId = 1) {
   return {
@@ -251,4 +251,45 @@ test("rejects wrong-sized selections, repeated IDs and missing ratings", () => {
   assert.throws(() => findBalancedTeams(captainA, captainA, others), TypeError);
   assert.throws(() => findBalancedTeams(captainA, captainB, [...others.slice(1), captainA]), TypeError);
   assert.throws(() => findBalancedTeams({ ...captainA, rating: null }, captainB, others), TypeError);
+});
+
+function syntheticLeague(matchCount, trueScale) {
+  let seed = 12345;
+  const random = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+  const ratings = Object.fromEntries(Array.from({ length: 20 }, (_, index) => [index + 1, 3000 + index * 150]));
+  const matches = [];
+  for (let index = 0; index < matchCount; index += 1) {
+    const ids = Object.keys(ratings).map(Number).sort(() => random() - 0.5).slice(0, 10);
+    const gap = (ids.slice(0, 5).reduce((sum, id) => sum + ratings[id], 0) - ids.slice(5).reduce((sum, id) => sum + ratings[id], 0)) / 5;
+    matches.push({
+      match_id: index + 1,
+      start_time: 1_800_000_000 + index * 3600,
+      radiant_win: random() < 1 / (1 + 10 ** (-gap / trueScale)),
+      players: [0, 1, 2, 3, 4, 128, 129, 130, 131, 132].map((slot, seat) => ({ account_id: ids[seat], player_slot: slot })),
+    });
+  }
+  return { snapshot: { matches }, ratings };
+}
+
+test("keeps the default model until there are enough matches to calibrate", () => {
+  const { snapshot, ratings } = syntheticLeague(14, 400);
+  const result = calibrateModel(snapshot, ratings);
+  assert.equal(result.matches, 14);
+  assert.equal(result.status, "collecting");
+  assert.deepEqual(result.applied, DEFAULT_MODEL);
+  assert.ok(result.scaleInterval[0] <= result.fitted.scale && result.fitted.scale <= result.scaleInterval[1]);
+});
+
+test("adopts a shrunk scale once the fitted interval is closed and the history is long", () => {
+  const { snapshot, ratings } = syntheticLeague(400, 800);
+  const result = calibrateModel(snapshot, ratings);
+  assert.equal(result.status, "applied");
+  assert.ok(result.scaleInterval[0] <= 800 && 800 <= result.scaleInterval[1], JSON.stringify(result));
+  assert.ok(result.applied.scale > DEFAULT_MODEL.scale && result.applied.scale <= result.fitted.scale, JSON.stringify(result));
+
+  const players = buildLeagueRoster(snapshot, ratings, result.applied);
+  const [captainA, captainB, ...others] = players.slice(0, 10);
+  const wide = findBalancedTeams(captainA, captainB, others, { scale: 2000 });
+  const narrow = findBalancedTeams(captainA, captainB, others);
+  assert.ok(wide.withinRange >= narrow.withinRange);
 });

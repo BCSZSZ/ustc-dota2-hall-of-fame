@@ -190,3 +190,23 @@ def test_summary_keeps_benchmark_percentiles_and_support_stats() -> None:
     assert player["bm"] == {"gpm": 82, "death": 20}
     assert (player["tf"], player["obs"], player["sen"], player["stacks"], player["stuns"]) == (0.712, 6, 4, 3, 12.3)
     assert summarise(raw_match(8, parsed=False), build_constants(HEROES, ITEMS))["players"][0]["bm"] is None
+
+
+def test_talent_picks_record_first_choice_per_tier() -> None:
+    heroes = {"1": {"id": 1, "name": "npc_dota_hero_antimage", "localized_name": "Anti-Mage"}}
+    hero_abilities = {"npc_dota_hero_antimage": {"talents": [
+        {"name": "special_bonus_a", "level": 1}, {"name": "special_bonus_b", "level": 1},
+        {"name": "special_bonus_c", "level": 2}, {"name": "special_bonus_d", "level": 2},
+    ]}}
+    abilities = {"special_bonus_a": {"dname": "+10 Agility"}, "special_bonus_b": {"dname": "+200 Health"}}
+    ability_ids = {"901": "special_bonus_a", "902": "special_bonus_b", "903": "special_bonus_c", "904": "special_bonus_d", "5": "blink"}
+    constants = build_constants(heroes, ITEMS, hero_abilities, abilities, ability_ids)
+    assert constants["talents"]["1"][0] == {"id": 901, "tier": 1, "text": "+10 Agility"}
+
+    raw = raw_match(7, parsed=True)
+    raw["players"][0]["ability_upgrades_arr"] = [5, 902, 5, 903, 901]
+
+    assert summarise(raw, constants)["players"][0]["talents"] == [
+        {"tier": 1, "id": 902, "both": True},
+        {"tier": 2, "id": 903, "both": False},
+    ]

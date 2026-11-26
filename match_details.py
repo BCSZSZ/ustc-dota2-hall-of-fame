@@ -12,7 +12,7 @@ import httpx
 from PIL import Image
 
 # Bump when summaries gain fields; older summaries are refetched once.
-SUMMARY_VERSION = 3
+SUMMARY_VERSION = 4
 IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
 HERO_IMAGE_SIZE = (128, 72)
 ITEM_IMAGE_SIZE = (66, 48)
@@ -42,7 +42,32 @@ class Client(Protocol):
     def request_parse(self, match_id: int) -> Any: ...
 
 
-def build_constants(heroes: dict[str, Any], items: dict[str, Any]) -> dict[str, Any]:
+def build_talents(
+    heroes: dict[str, Any], hero_abilities: dict[str, Any], abilities: dict[str, Any], ability_ids: dict[str, Any]
+) -> dict[str, list[dict[str, Any]]]:
+    """Each hero's eight talents with tier (1-4 for levels 10/15/20/25), ability ID and English text."""
+    id_by_key = {key: int(ability_id) for ability_id, key in ability_ids.items() if str(ability_id).isdigit()}
+    talents: dict[str, list[dict[str, Any]]] = {}
+    for hero in heroes.values():
+        if not isinstance(hero, dict) or not isinstance(hero.get("id"), int):
+            continue
+        entries = []
+        for talent in (hero_abilities.get(hero.get("name"), {}) or {}).get("talents", []):
+            key = talent.get("name")
+            if key in id_by_key and isinstance(talent.get("level"), int):
+                entries.append({"id": id_by_key[key], "tier": talent["level"], "text": (abilities.get(key) or {}).get("dname") or key})
+        if entries:
+            talents[str(hero["id"])] = entries
+    return talents
+
+
+def build_constants(
+    heroes: dict[str, Any],
+    items: dict[str, Any],
+    hero_abilities: dict[str, Any] | None = None,
+    abilities: dict[str, Any] | None = None,
+    ability_ids: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     names_zh = json.loads(HERO_NAMES_ZH.read_text(encoding="utf-8"))
     used_as_component = {part for item in items.values() for part in item.get("components") or []}
 
@@ -56,6 +81,7 @@ def build_constants(heroes: dict[str, Any], items: dict[str, Any]) -> dict[str, 
         return bool(item.get("components")) or key not in used_as_component or key in STANDALONE_COMPONENTS
 
     return {
+        "talents": build_talents(heroes, hero_abilities or {}, abilities or {}, ability_ids or {}),
         "heroes": {
             str(hero["id"]): {
                 "name": names_zh.get(str(hero["id"])) or hero.get("localized_name") or str(hero["id"]),
@@ -115,6 +141,21 @@ def lane_results(players: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     return results
 
 
+def _talent_picks(player: dict[str, Any], talents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per tier, the first talent the player took; `both` marks tiers where the other one was taken later too."""
+    tier_by_id = {talent["id"]: talent["tier"] for talent in talents}
+    picks: dict[int, dict[str, Any]] = {}
+    for ability_id in player.get("ability_upgrades_arr") or []:
+        tier = tier_by_id.get(ability_id)
+        if tier is None:
+            continue
+        if tier in picks:
+            picks[tier]["both"] = picks[tier]["id"] != ability_id or picks[tier]["both"]
+        else:
+            picks[tier] = {"tier": tier, "id": ability_id, "both": False}
+    return [picks[tier] for tier in sorted(picks)]
+
+
 def _benchmarks(raw: Any) -> dict[str, int] | None:
     if not isinstance(raw, dict):
         return None
@@ -137,6 +178,7 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
         return bool(key and items.get(key, {}).get("major"))
 
     lanes = lane_results(raw.get("players") or [])
+    talents_by_hero = constants.get("talents", {})
     players = []
     for player in sorted(raw.get("players") or [], key=lambda item: item.get("player_slot", 0)):
         built: dict[str, int | None] = {}
@@ -192,6 +234,7 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
                 "sen": player.get("sen_placed"),
                 "stacks": player.get("camps_stacked"),
                 "stuns": round(player["stuns"], 1) if isinstance(player.get("stuns"), (int, float)) else None,
+                "talents": _talent_picks(player, talents_by_hero.get(str(player.get("hero_id")), [])),
             }
         )
     return {
@@ -259,9 +302,15 @@ def refresh_match_details(
     now = now or datetime.now(UTC)
     constants_path = data_dir / "constants.json"
     constants = _read(constants_path)
-    if refresh_constants or not constants.get("heroes"):
+    if refresh_constants or not constants.get("heroes") or "talents" not in constants:
         try:
-            constants = build_constants(client.get_json("/constants/heroes"), client.get_json("/constants/items"))
+            constants = build_constants(
+                client.get_json("/constants/heroes"),
+                client.get_json("/constants/items"),
+                client.get_json("/constants/hero_abilities"),
+                client.get_json("/constants/abilities"),
+                client.get_json("/constants/ability_ids"),
+            )
             _write(constants_path, constants)
         except error_type:
             if not constants.get("heroes"):

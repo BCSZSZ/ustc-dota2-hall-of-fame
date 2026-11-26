@@ -7,6 +7,21 @@ const PLAN_LIMIT = 5;
 const FALLBACK_LIMIT = 3;
 const DIVERSITY_SLACK = 0.01;
 
+// Win chance = logistic(team average gap / scale); in-house Elo is blended in with
+// weight min(50%, games / (games + halfWeightGames)).
+export const DEFAULT_MODEL = Object.freeze({ scale: 400, halfWeightGames: 36 });
+// Calibration refits both on the league's own history (each match predicted only
+// from earlier matches) and adopts them once there is enough evidence.
+const SCALE_GRID = Array.from({ length: 41 }, (_, index) => 200 + index * 25);
+const HALF_WEIGHT_GRID = [6, 12, 24, 36, 72, 144, Infinity];
+const MIN_SCALE_MATCHES = 50;
+const MIN_ELO_MATCHES = 100;
+// The adopted scale moves from the default toward the fit as n / (n + SCALE_SHRINK).
+const SCALE_SHRINK = 50;
+// Likelihood-ratio thresholds: 1.92 gives a 95% profile interval; 3.84 is a 5% test.
+const INTERVAL_DROP = 1.92;
+const SIGNIFICANT_GAIN = 3.84;
+
 // The configured medal bands span 770 points from Herald through Ancient and
 // 1000 points for Divine (4620–5620). Divide each into five equal star bands.
 // Coarse estimates use band midpoints. Tier codes without stars use the medal midpoint.
@@ -60,9 +75,9 @@ function medianRating(ratings) {
   return ratings.length % 2 ? ratings[middle] : average(ratings.slice(middle - 1, middle + 1));
 }
 
-function expectedWinChance(ratingDifference) {
-  // Centered form of the standard 400-point Elo logistic curve.
-  return 0.5 + 0.5 * Math.tanh(ratingDifference * Math.LN10 / 800);
+function expectedWinChance(ratingDifference, scale = DEFAULT_MODEL.scale) {
+  // Centered form of the Elo logistic curve, 1 / (1 + 10^(-difference / scale)).
+  return 0.5 + 0.5 * Math.tanh(ratingDifference * Math.LN10 / (2 * scale));
 }
 
 function nonemptyName(name) {
@@ -75,7 +90,7 @@ function hasFullSlots(players) {
   return MATCH_SLOTS.every((slot) => slots.has(slot));
 }
 
-export function buildLeagueRoster(snapshot, manualMmr = {}) {
+function prepareLeague(snapshot, manualMmr) {
   const excluded = new Set(snapshot.metadata?.incomplete_roster_match_ids);
   const matches = (snapshot.matches || [])
     .filter((match) => Number.isSafeInteger(match?.match_id) && match.match_id > 0 &&
@@ -128,38 +143,97 @@ export function buildLeagueRoster(snapshot, manualMmr = {}) {
       entry.baseRating = median;
       entry.ratingSource = "median";
     }
-    entry.inhouseRating = entry.baseRating;
   }
+  return { league, scoredMatches, median };
+}
 
-  if (median !== null) {
-    for (const { participants, radiantWin } of scoredMatches) {
-      const radiantRatings = [];
-      const direRatings = [];
-      for (const { entry, radiant } of participants.values()) {
-        (radiant ? radiantRatings : direRatings).push(entry.inhouseRating);
-      }
-      const expectedRadiant = expectedWinChance(average(radiantRatings) - average(direRatings));
-      const radiantDelta = ELO_K * (Number(radiantWin) - expectedRadiant);
-      for (const { entry, radiant } of participants.values()) {
-        entry.inhouseRating += radiant ? radiantDelta : -radiantDelta;
-      }
+const inhouseWeight = (games, model) => Math.min(0.5, games / (games + model.halfWeightGames));
+
+// Replays scored matches in time order. onMatch receives the pre-match gap between
+// the teams' blended ratings, so every prediction only uses earlier matches.
+function replayInhouse({ league, scoredMatches, median }, model, onMatch) {
+  const inhouse = new Map([...league.values()].map((entry) => [entry, entry.baseRating]));
+  const played = new Map();
+  if (median === null) return inhouse;
+  for (const { participants, radiantWin } of scoredMatches) {
+    const sides = { radiant: [], dire: [] };
+    for (const { entry, radiant } of participants.values()) (radiant ? sides.radiant : sides.dire).push(entry);
+    if (onMatch) {
+      const blended = (entry) => entry.baseRating +
+        inhouseWeight(played.get(entry) || 0, model) * (inhouse.get(entry) - entry.baseRating);
+      onMatch(average(sides.radiant.map(blended)) - average(sides.dire.map(blended)), radiantWin);
     }
+    const expectedRadiant = expectedWinChance(
+      average(sides.radiant.map((entry) => inhouse.get(entry))) - average(sides.dire.map((entry) => inhouse.get(entry))),
+      model.scale,
+    );
+    const radiantDelta = ELO_K * (Number(radiantWin) - expectedRadiant);
+    for (const entry of sides.radiant) inhouse.set(entry, inhouse.get(entry) + radiantDelta);
+    for (const entry of sides.dire) inhouse.set(entry, inhouse.get(entry) - radiantDelta);
+    for (const entry of [...sides.radiant, ...sides.dire]) played.set(entry, (played.get(entry) || 0) + 1);
   }
+  return inhouse;
+}
 
-  return [...league.values()].map(({ accountId, name, games, inhouseRating, baseRating, rankTier, ratingSource }) => {
-    const inhouseWeight = baseRating === null ? 0 : Math.min(0.5, games / (games + 36));
+export function buildLeagueRoster(snapshot, manualMmr = {}, model = DEFAULT_MODEL) {
+  const prepared = prepareLeague(snapshot, manualMmr);
+  const inhouse = replayInhouse(prepared, model);
+  return [...prepared.league.values()].map((entry) => {
+    const { accountId, name, games, baseRating, rankTier, ratingSource } = entry;
+    const inhouseRating = inhouse.get(entry);
+    const weight = baseRating === null ? 0 : inhouseWeight(games, model);
     return {
       accountId,
       name: nonemptyName(snapshot.player_names?.[accountId]) || name || `Account ${accountId}`,
       games,
       baseRating,
       inhouseRating,
-      inhouseWeight,
+      inhouseWeight: weight,
       rankTier,
       ratingSource,
-      rating: baseRating === null ? null : baseRating + inhouseWeight * (inhouseRating - baseRating),
+      rating: baseRating === null ? null : baseRating + weight * (inhouseRating - baseRating),
     };
   });
+}
+
+export function calibrateModel(snapshot, manualMmr = {}) {
+  const prepared = prepareLeague(snapshot, manualMmr);
+  const matches = prepared.median === null ? 0 : prepared.scoredMatches.length;
+  const result = { matches, fitted: null, scaleInterval: null, status: "collecting", applied: { ...DEFAULT_MODEL } };
+  if (matches < 2) return result;
+
+  const logLikelihood = (model) => {
+    let total = 0;
+    replayInhouse(prepared, model, (difference, radiantWin) => {
+      const chance = Math.min(1 - 1e-9, Math.max(1e-9, expectedWinChance(difference, model.scale)));
+      total += Math.log(radiantWin ? chance : 1 - chance);
+    });
+    return total;
+  };
+  const table = HALF_WEIGHT_GRID.flatMap((halfWeightGames) =>
+    SCALE_GRID.map((scale) => ({ scale, halfWeightGames, fit: logLikelihood({ scale, halfWeightGames }) })));
+  const best = table.reduce((left, right) => (right.fit > left.fit ? right : left));
+  const profile = table.filter((row) => row.halfWeightGames === best.halfWeightGames && row.fit >= best.fit - INTERVAL_DROP)
+    .map((row) => row.scale);
+  result.fitted = { scale: best.scale, halfWeightGames: best.halfWeightGames };
+  result.scaleInterval = [Math.min(...profile), Math.max(...profile)];
+
+  const closed = result.scaleInterval[0] > SCALE_GRID[0] && result.scaleInterval[1] < SCALE_GRID.at(-1);
+  if (matches >= MIN_SCALE_MATCHES) {
+    result.status = closed ? "applied" : "uncertain";
+    if (closed) {
+      result.applied.scale = Math.round(DEFAULT_MODEL.scale +
+        (matches / (matches + SCALE_SHRINK)) * (best.scale - DEFAULT_MODEL.scale));
+    }
+  }
+  if (matches >= MIN_ELO_MATCHES) {
+    const scale = result.applied.scale;
+    const current = logLikelihood({ scale, halfWeightGames: DEFAULT_MODEL.halfWeightGames });
+    const candidate = HALF_WEIGHT_GRID.map((halfWeightGames) => ({ halfWeightGames, fit: logLikelihood({ scale, halfWeightGames }) }))
+      .reduce((left, right) => (right.fit > left.fit ? right : left));
+    if (2 * (candidate.fit - current) >= SIGNIFICANT_GAIN) result.applied.halfWeightGames = candidate.halfWeightGames;
+  }
+  return result;
 }
 
 function countBits(mask) {
@@ -204,7 +278,7 @@ function validPlayer(player) {
   return Number.isSafeInteger(accountId) && accountId > 0 && Number.isFinite(player.rating);
 }
 
-export function findBalancedTeams(captainA, captainB, others) {
+export function findBalancedTeams(captainA, captainB, others, { scale = DEFAULT_MODEL.scale } = {}) {
   if (!Array.isArray(others) || others.length !== 8) {
     throw new TypeError("Select exactly eight players in addition to the two captains.");
   }
@@ -224,7 +298,7 @@ export function findBalancedTeams(captainA, captainB, others) {
     const averageB = average(teamB.map((player) => player.rating));
     const difference = averageA - averageB;
     const ratingGap = Math.abs(difference);
-    const winChanceA = expectedWinChance(difference);
+    const winChanceA = expectedWinChance(difference, scale);
     plans.push({ mask, teamA, teamB, averageA, averageB, ratingGap, winChanceA });
   }
 
@@ -235,8 +309,8 @@ export function findBalancedTeams(captainA, captainB, others) {
   let shown = qualifying.length ? qualifying : plans.slice(0, FALLBACK_LIMIT);
   if (qualifying.length > PLAN_LIMIT) {
     const fifthBest = qualifying[PLAN_LIMIT - 1];
-    const limit = expectedWinChance(fifthBest.ratingGap) + DIVERSITY_SLACK;
-    shown = pickDiversePlans(qualifying.filter((plan) => expectedWinChance(plan.ratingGap) <= limit));
+    const limit = expectedWinChance(fifthBest.ratingGap, scale) + DIVERSITY_SLACK;
+    shown = pickDiversePlans(qualifying.filter((plan) => expectedWinChance(plan.ratingGap, scale) <= limit));
   }
   return {
     examined: plans.length,

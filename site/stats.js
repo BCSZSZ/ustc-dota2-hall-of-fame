@@ -8,6 +8,7 @@ const state = {
   names: {},
   heroes: {},
   items: {},
+  talents: {},
   min: 0,
   max: 0,
   from: 0,
@@ -277,31 +278,77 @@ function matchDetail(match) {
     timeline);
 }
 
+const TALENT_LEVELS = { 1: 10, 2: 15, 3: 20, 4: 25 };
+
+function talentTree(player) {
+  const options = state.talents[player.hero] || [];
+  const textOf = (id) => options.find((talent) => talent.id === id)?.text || "未知天赋";
+  const picks = new Map((player.talents || []).map((pick) => [pick.tier, pick]));
+  const lines = [4, 3, 2, 1].filter((tier) => picks.has(tier)).map((tier) => {
+    const pick = picks.get(tier);
+    return `${TALENT_LEVELS[tier]} 级：${textOf(pick.id)}${pick.both ? "（后来另一侧也点了）" : ""}`;
+  });
+  return el("span", { class: "talent-tree", title: lines.length ? lines.join("\n") : "没有天赋记录" },
+    [4, 3, 2, 1].map((tier) => el("i", { class: picks.has(tier) ? (picks.get(tier).both ? "on both" : "on") : "" }, TALENT_LEVELS[tier])));
+}
+
+// Titles shown on the match card. The full set is being designed; MVP is live.
+function achievements(match, player) {
+  const list = [];
+  if (isMvp(match, player)) list.push(mvpBadge());
+  return list;
+}
+
+function playerRow(match, player) {
+  const kills = player.k ?? 0;
+  return el("div", { class: `player-row${isMvp(match, player) ? " is-mvp" : ""}` },
+    heroIcon(player.hero),
+    el("span", { class: "pr-who" },
+      el("span", { class: "pr-name" }, playerLink(player.account_id)),
+      el("span", { class: "pr-sub" }, `${player.pos ? `${player.pos}号位 · ` : ""}${hero(player.hero).name}`, achievements(match, player))),
+    el("span", { class: "pr-kda", title: "击杀 / 死亡 / 助攻" }, `${kills}/${player.d ?? 0}/${player.a ?? 0}`),
+    el("span", { class: "pr-score", title: "综合评分" }, scoreText(player.score)),
+    el("span", { class: "pr-nw", title: `净值 ${(player.nw ?? 0).toLocaleString()} · GPM ${player.gpm ?? "—"}` },
+      player.nw ? `${(player.nw / 1000).toFixed(1)}k` : "—"),
+    el("span", { class: "pr-items" },
+      Array.from({ length: 6 }, (_, slot) => (player.items[slot] ? itemIcon(player.items[slot]) : el("span", { class: "item-img empty" }))),
+      player.neutral ? el("span", { class: "pr-neutral" }, itemIcon(player.neutral)) : el("span", { class: "pr-neutral" }, el("span", { class: "item-img empty" }))),
+    talentTree(player));
+}
+
+function teamPanel(match, radiant) {
+  const players = match.players.filter((player) => isRadiant(player) === radiant);
+  const teamWon = radiant === match.radiant_win;
+  const worth = players.reduce((sum, player) => sum + (player.nw ?? 0), 0);
+  return el("div", { class: `team-panel ${radiant ? "radiant" : "dire"}${teamWon ? " won" : ""}` },
+    el("div", { class: "team-head" },
+      el("b", {}, radiant ? "天辉" : "夜魇"),
+      el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
+      el("small", {}, `击杀 ${radiant ? match.radiant_score : match.dire_score} · 总净值 ${(worth / 1000).toFixed(1)}k`)),
+    el("div", { class: "team-cols", "aria-hidden": "true" },
+      el("span", {}, "英雄"), el("span", {}, "选手"), el("span", {}, "K/D/A"), el("span", {}, "评分"), el("span", {}, "净值"), el("span", {}, "装备"), el("span", {}, "天赋")),
+    players.map((player) => playerRow(match, player)));
+}
+
 function renderMatches(panel, matches) {
-  panel.append(section("比赛", `共 ${matches.length} 场，点开查看 BP、数据、装备和经济曲线。`));
+  panel.append(section("比赛", `共 ${matches.length} 场。卡片显示每位选手的英雄、装备、天赋和本局成就，天赋悬停可看具体选择；点“详情”查看 BP、完整数据、出装时间和经济曲线。`));
   for (const match of [...matches].reverse()) {
     const open = state.openMatch === match.match_id;
-    const side = (radiant) => el("span", { class: `side ${radiant ? "radiant" : "dire"}${radiant === match.radiant_win ? " won" : ""}` },
-      el("b", {}, radiant ? "天辉" : "夜魇"),
-      el("span", { class: "hero-row" }, match.players.filter((player) => isRadiant(player) === radiant).map((player) => heroIcon(player.hero))));
+    const toggle = () => {
+      state.openMatch = open ? null : match.match_id;
+      state.scrollTarget = open ? null : `#match-${match.match_id}`;
+      syncHash();
+      render();
+    };
     const card = el("article", { class: `match-card${open ? " open" : ""}`, id: `match-${match.match_id}` },
-      el("button", {
-        type: "button", class: "match-row", "aria-expanded": String(open),
-        onclick: () => {
-          state.openMatch = open ? null : match.match_id;
-          state.scrollTarget = open ? null : `#match-${match.match_id}`;
-          syncHash();
-          render();
-        },
-      },
-      el("span", { class: "match-when" }, formatDate(match.start_time), el("small", {}, formatDuration(match.duration)),
-        (() => {
-          const mvp = match.players.find((player) => isMvp(match, player));
-          return mvp ? el("small", { class: "match-mvp" }, mvpBadge(), mvp.account_id ? playerName(mvp.account_id) : hero(mvp.hero).name) : null;
-        })()),
-      side(true),
-      el("span", { class: "match-score" }, `${match.radiant_score} : ${match.dire_score}`),
-      side(false)));
+      el("div", { class: "match-head" },
+        el("span", { class: "match-when" }, formatDate(match.start_time), el("small", {}, `时长 ${formatDuration(match.duration)}`)),
+        el("span", { class: "match-score" },
+          el("b", { class: match.radiant_win ? "radiant won" : "radiant" }, "天辉"),
+          `${match.radiant_score} : ${match.dire_score}`,
+          el("b", { class: match.radiant_win ? "dire" : "dire won" }, "夜魇")),
+        el("button", { type: "button", class: "match-toggle", "aria-expanded": String(open), onclick: toggle }, open ? "收起 ▴" : "详情 ▾")),
+      el("div", { class: "match-teams" }, teamPanel(match, true), teamPanel(match, false)));
     if (open) card.append(matchDetail(match));
     panel.append(card);
   }
@@ -799,6 +846,7 @@ async function load() {
     ]);
     state.heroes = constants.heroes || {};
     state.items = constants.items || {};
+    state.talents = constants.talents || {};
     for (const match of league.matches || []) {
       for (const player of match.players || []) {
         if (player.account_id && player.personaname) state.names[player.account_id] = player.personaname;

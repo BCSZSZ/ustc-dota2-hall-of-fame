@@ -163,68 +163,6 @@
   box-shadow: 0 8px 24px rgba(69, 0, 13, 0.12);
 }
 
-.match-row {
-  display: grid;
-  grid-template-columns: 110px 1fr auto 1fr;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 12px 16px;
-  border: 0;
-  color: var(--ink);
-  text-align: left;
-  background: none;
-}
-
-.match-when {
-  display: grid;
-  font-weight: 700;
-}
-
-.match-when small {
-  color: var(--muted);
-  font-weight: 400;
-}
-
-.match-score {
-  color: var(--red-900);
-  font-size: 1.15rem;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-}
-
-.side {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  opacity: 0.72;
-}
-
-.side.dire {
-  justify-content: flex-end;
-}
-
-.side.dire b {
-  order: 2;
-}
-
-.side.won {
-  opacity: 1;
-}
-
-.side.won b::after {
-  content: " 胜";
-  color: var(--gold-700);
-}
-
-.side.radiant b {
-  color: #237a3b;
-}
-
-.side.dire b {
-  color: #a3261b;
-}
-
 .match-detail {
   padding: 4px 16px 18px;
   border-top: 1px dashed var(--line);
@@ -511,21 +449,6 @@
   letter-spacing: 0.04em;
   vertical-align: middle;
   background: linear-gradient(135deg, #fff4aa, #e9a52c);
-}
-
-.match-mvp {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--ink);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.match-mvp .mvp {
-  margin-left: 0;
 }
 
 .radar {
@@ -829,6 +752,237 @@
   height: 20px;
 }
 
+.match-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 16px 8px;
+}
+
+.match-when {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.match-when small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.match-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--red-900);
+  font-size: 1.3rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-score b {
+  font-size: 0.9rem;
+  opacity: 0.6;
+}
+
+.match-score b.radiant {
+  color: #237a3b;
+}
+
+.match-score b.dire {
+  color: #a3261b;
+}
+
+.match-score b.won {
+  opacity: 1;
+}
+
+.match-score b.won::after {
+  content: " 胜";
+  color: var(--gold-700);
+}
+
+.match-toggle {
+  justify-self: end;
+  padding: 6px 14px;
+  border: 1px solid #d6ae6a;
+  border-radius: 999px;
+  color: var(--red-900);
+  font-weight: 700;
+  background: #fff8e6;
+}
+
+.match-teams {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.team-panel {
+  min-width: 0;
+  padding: 8px 10px 6px;
+  border-top: 4px solid #237a3b;
+  border-radius: 10px;
+  background: rgba(35, 122, 59, 0.05);
+}
+
+.team-panel.dire {
+  border-top-color: #a3261b;
+  background: rgba(163, 38, 27, 0.05);
+}
+
+.team-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.team-panel.radiant .team-head b {
+  color: #237a3b;
+}
+
+.team-panel.dire .team-head b {
+  color: #a3261b;
+}
+
+.team-head small {
+  color: var(--muted);
+}
+
+.team-cols,
+.player-row {
+  display: grid;
+  grid-template-columns: 52px minmax(80px, 1fr) 56px 26px 38px auto 30px;
+  align-items: center;
+  gap: 6px;
+}
+
+.team-cols {
+  padding: 0 4px 2px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.player-row {
+  min-height: 46px;
+  padding: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.player-row.is-mvp {
+  border-radius: 6px;
+  background: rgba(255, 213, 107, 0.22);
+}
+
+.player-row > .hero-img {
+  width: 52px;
+  height: 29px;
+}
+
+.pr-who {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pr-name {
+  overflow: hidden;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pr-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.pr-sub .mvp {
+  margin-left: 2px;
+}
+
+.pr-kda,
+.pr-score,
+.pr-nw {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pr-score {
+  color: var(--red-900);
+  font-weight: 800;
+}
+
+.pr-items {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pr-items .item-img {
+  width: 29px;
+  height: 21px;
+}
+
+.item-img.empty {
+  display: inline-block;
+  border: 1px dashed var(--line);
+  background: none;
+}
+
+.pr-neutral {
+  margin-left: 4px;
+}
+
+.pr-neutral .item-img {
+  width: 22px;
+  border-radius: 50%;
+}
+
+.talent-tree {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  font-size: 0.6rem;
+  line-height: 1;
+  text-align: center;
+  cursor: help;
+}
+
+.talent-tree i {
+  display: block;
+  padding: 1px 0;
+  border-radius: 3px;
+  color: var(--muted);
+  font-style: normal;
+  background: rgba(137, 66, 23, 0.08);
+}
+
+.talent-tree i.on {
+  color: #fff;
+  background: var(--gold-700);
+}
+
+.talent-tree i.on.both {
+  background: linear-gradient(90deg, var(--gold-700) 50%, var(--red-700) 50%);
+}
+
+@media (max-width: 1250px) {
+  .match-teams {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 1100px) {
   .player-card-head {
     grid-template-columns: minmax(160px, 1fr) 150px minmax(200px, 1.4fr);
@@ -848,48 +1002,47 @@
     justify-self: center;
   }
 
-  .match-row {
+  .match-head {
     grid-template-columns: 1fr auto;
   }
 
-  .match-when {
-    grid-column: 1;
-  }
-
-  .side,
-  .side.dire {
+  .match-head .match-score {
     grid-column: 1 / -1;
-    justify-content: flex-start;
+    grid-row: 2;
+    justify-self: start;
   }
 
-  .side b {
-    flex: none;
-    width: 4.2em;
-    white-space: nowrap;
+  .player-row {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "hero who kda"
+      "items items items";
   }
 
-  .side .hero-row {
-    flex: 1;
-    flex-wrap: nowrap;
-    min-width: 0;
+  .player-row > .hero-img {
+    grid-area: hero;
   }
 
-  .side .hero-img {
-    flex: 1 1 0;
-    min-width: 0;
-    max-width: 48px;
-    width: auto;
-    height: auto;
-    aspect-ratio: 16 / 9;
+  .pr-who {
+    grid-area: who;
   }
 
-  .side.dire b {
-    order: 0;
+  .pr-kda {
+    grid-area: kda;
   }
 
-  .match-score {
-    grid-row: 1;
-    grid-column: 2;
+  .pr-score,
+  .pr-nw,
+  .talent-tree {
+    display: none;
+  }
+
+  .pr-items {
+    grid-area: items;
+  }
+
+  .team-cols {
+    display: none;
   }
 
   .build-row {
