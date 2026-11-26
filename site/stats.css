@@ -1724,3 +1724,8 @@ a.player-card-head {
   color: var(--muted);
   font-size: 0.78rem;
 }
+
+.jungle-card,
+.jungle-slot {
+  background: #fbf7ee;
+}

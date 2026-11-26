@@ -1,7 +1,7 @@
 // Match page: match.html?id=<match_id>.
 
 import { deathReview } from "./deaths.js?v=2";
-import { laneReview } from "./lanes.js?v=2";
+import { laneReview } from "./lanes.js?v=3";
 import { matchMap } from "./map.js?v=2";
 import {
   LANE_TEXT, SMVP_MARGIN, el, formatDate, formatDuration, hero, heroIcon, heroLabel, isMvp, isRadiant,

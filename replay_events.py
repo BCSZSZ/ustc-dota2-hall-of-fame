@@ -12,7 +12,7 @@ from typing import Any, Iterable
 from match_details import _read, _write
 
 # Bump when derived replay data gains or changes fields; older matches are re-parsed once.
-REPLAY_VERSION = 2
+REPLAY_VERSION = 3
 NEAR_CELLS = 1200 / 128
 # The river runs from the top-left Roshan pit (92, 141) to the bottom-right one (148, 106); checked against
 # Roshan kills, tower TP landings and rune pickups. Radiant is below the line.
@@ -154,7 +154,8 @@ def lane_events(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Each hero's laning-phase lane, its roams to other lanes and its time away from its own lane.
 
     A roam is 30 seconds or more spent in another lane's zone before 10:00. Time in the jungle, the river or
-    near the base is counted as away from the lane but is not a roam.
+    near the base is counted as away from the lane but is not a roam. For a jungler every 30-second stay in a
+    lane zone is recorded the same way; those are its gank attempts.
     """
     track: dict[int, dict[int, tuple[float, float]]] = {}
     for entry in entries:
@@ -174,8 +175,6 @@ def lane_events(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
         ys = sorted(y for _, y in window)
         own = _nearest_lane(xs[len(xs) // 2], ys[len(ys) // 2], LANE_RADIUS) or "jungle"
         lanes[str(slot)] = own
-        if own == "jungle":
-            continue
         radiant = index < 5
         current, start, previous, outside = None, None, None, 0
         for t in sorted(seconds):
@@ -193,7 +192,8 @@ def lane_events(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
             previous = t
         if current and previous - start + 1 >= ROAM_MIN_SECONDS:
             roams.append([slot, start, previous, current])
-        away[str(slot)] = outside
+        if own != "jungle":
+            away[str(slot)] = outside
     return {"lanes": lanes, "roams": sorted(roams, key=lambda roam: (roam[1], roam[0])), "away": away}
 
 
@@ -269,8 +269,10 @@ def _index_row(match: dict[str, Any], detail: dict[str, Any], slot: int, time: i
 LANE_COLUMNS = [
     "match_id", "slot", "lane", "role", "source", "opp", "lh5", "lh10", "dn10", "gold5", "gold10", "xp5", "xp10",
     "opp_lh5", "opp_lh10", "opp_gold5", "opp_gold10", "opp_xp10", "result", "lane_diff", "kills", "away", "obs", "sen",
-    "deaths", "roams",
+    "deaths", "roams", "ganks", "short_lane",
 ]
+# A gank attempt succeeded when the jungler hit an enemy hero who died within this many seconds after it left.
+GANK_GRACE = 5
 # OpenDota's lane_role (1 safe, 2 mid, 3 off, 4 jungle) as a physical lane, used until the replay is parsed.
 LANE_EDGE = 0.1
 
@@ -340,6 +342,29 @@ def build_lane_index(data_dir: Path) -> int:
                 own_deaths.append([death["t"], kind, attackers])
             other = opp.get(slot)
             wards = [ward for ward in detail.get("wards", []) if ward[1] == slot and ward[2] < LANING_END]
+            ganks = short_lane = None
+            if lane_of[slot] == "jungle" and replay:
+                ganks = []
+                for roam in (roam for roam in replay.get("roams", []) if roam[0] == slot):
+                    _, start, end, lane = roam
+                    kills = [death["slot"] for death in early if start <= death["t"] <= end + GANK_GRACE and slot in death["attackers"]]
+                    died = any(death["slot"] == slot and start <= death["t"] <= end + GANK_GRACE for death in early)
+                    ganks.append([start, end, lane, kills, int(died)])
+            if lane_of[slot] == "jungle":
+                count = lambda lane, radiant: sum(lane_of[p["slot"]] == lane and (p["slot"] < 128) == radiant for p in players)
+                # The lane the jungler's side is short in: the biggest deficit, preferring a lane someone still held.
+                short = [(count(lane, slot >= 128) - count(lane, slot < 128), count(lane, slot < 128), lane)
+                         for lane in ("top", "mid", "bot") if count(lane, slot < 128) < count(lane, slot >= 128)]
+                if short:
+                    _, held, lane = max(short)
+                    mate = next((p["slot"] for p in players if lane_of[p["slot"]] == lane and (p["slot"] < 128) == (slot < 128)), None)
+                    short_lane = [lane, held, count(lane, slot >= 128), result.get(mate) if mate is not None else None]
+                    # A jungler is a support taken out of a lane, so it faces that lane's enemy support: the enemy
+                    # there that the lane pairing left without a counterpart, else its highest position.
+                    enemies = sorted((p for p in players if lane_of[p["slot"]] == lane and (p["slot"] < 128) != (slot < 128)),
+                                     key=lambda p: (p["slot"] not in opp, p.get("pos") or 0))
+                    if enemies:
+                        other = enemies[-1]["slot"]
             rows.append([
                 match_id, slot, lane_of[slot], _role(slot < 128, lane_of[slot]), source_of[slot], other,
                 value(slot, "lh", 5), value(slot, "lh", 10), value(slot, "dn", 10), value(slot, "gold", 5),
@@ -351,7 +376,18 @@ def build_lane_index(data_dir: Path) -> int:
                 replay.get("away", {}).get(str(slot)),
                 sum(ward[0] == 0 for ward in wards), sum(ward[0] == 1 for ward in wards),
                 own_deaths if replay else None,
-                [roam[1:] for roam in replay.get("roams", []) if roam[0] == slot] if replay else None,
+                [roam[1:] for roam in replay.get("roams", []) if roam[0] == slot] if replay and lane_of[slot] != "jungle" else ([] if replay else None),
+                ganks, short_lane,
             ])
+    # The enemy support facing a jungler has no lane counterpart of its own; it is compared with the jungler.
+    by_key = {(row[0], row[1]): row for row in rows}
+    opp_at, columns = LANE_COLUMNS.index("opp"), {name: index for index, name in enumerate(LANE_COLUMNS)}
+    for row in rows:
+        if row[columns["role"]] == "jungle" and row[opp_at] is not None:
+            support = by_key[(row[0], row[opp_at])]
+            if support[opp_at] is None:
+                support[opp_at] = row[1]
+                for key in ("lh5", "lh10", "gold5", "gold10", "xp10"):
+                    support[columns[f"opp_{key}"]] = row[columns[key]]
     _write(data_dir / "lanes.json", {"columns": LANE_COLUMNS, "rows": rows})
     return len(rows)

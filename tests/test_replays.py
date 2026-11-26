@@ -337,3 +337,39 @@ def test_lane_index_pairs_counterparts_and_classifies_laning_deaths(tmp_path: Pa
     assert row[128]["kills"] == 3 and row[128]["deaths"] == []
     assert (row[4]["obs"], row[4]["sen"], row[4]["roams"]) == (1, 0, [[300, 340, "mid"]])
     assert row[0]["lh10"] == 10 and row[0]["opp_lh10"] == 10 and row[0]["gold10"] == 4000 and row[0]["opp_gold10"] == 3000
+
+
+def test_jungler_visits_become_ganks_facing_the_short_lane_support(tmp_path: Path) -> None:
+    from replay_events import LANE_ANCHORS, REPLAY_VERSION, build_lane_index, lane_events
+
+    top = LANE_ANCHORS["top"]
+    entries = [{"type": "interval", "time": t, "slot": 2, "x": top[0] if 300 <= t < 340 else 150.0,
+                "y": top[1] if 300 <= t < 340 else 150.0, "life_state": 0} for t in range(0, 601)]
+    events = lane_events(entries)
+    assert events["lanes"] == {"2": "jungle"} and events["roams"] == [[2, 300, 339, "top"]] and events["away"] == {}
+
+    (tmp_path / "matches").mkdir()
+    (tmp_path / "replay").mkdir()
+    players = [{"slot": 0, "pos": 1}, {"slot": 2, "pos": 3}, {"slot": 128, "pos": 1}, {"slot": 129, "pos": 3},
+               {"slot": 130, "pos": 4}]
+    (tmp_path / "matches.json").write_text(json.dumps({"matches": [{"match_id": 7, "players": players}]}))
+    (tmp_path / "matches" / "7.json").write_text(json.dumps({"series": {
+        str(slot): {"gold": [0] * 10 + [gold], "lh": [0] * 11, "xp": [0] * 11, "dn": [0] * 11}
+        for slot, gold in {0: 1000, 2: 3000, 128: 3000, 129: 2500, 130: 1500}.items()}}))
+    (tmp_path / "replay" / "7.json").write_text(json.dumps({
+        "v": REPLAY_VERSION, "away": {}, "roams": [[2, 300, 339, "top"], [2, 450, 490, "bot"]],
+        "lanes": {"0": "top", "2": "jungle", "128": "top", "129": "bot", "130": "top"},
+        "deaths": [{"slot": 128, "t": 330, "attackers": [0, 2]}, {"slot": 2, "t": 480, "attackers": [129]}]}))
+
+    build_lane_index(tmp_path)
+    index = json.loads((tmp_path / "lanes.json").read_text())
+    row = {r[1]: dict(zip(index["columns"], r)) for r in index["rows"]}
+    jungler = row[2]
+    # Radiant is short in top (1 v 2); the jungler faces the Dire support there, and that support faces it back.
+    assert (jungler["role"], jungler["opp"], jungler["opp_gold10"], jungler["result"]) == ("jungle", 130, 1500, None)
+    assert (row[130]["opp"], row[130]["opp_gold10"], row[128]["opp"]) == (2, 3000, 0)
+    assert jungler["ganks"] == [[300, 339, "top", [128], 0], [450, 490, "bot", [], 1]]
+    assert jungler["short_lane"] == ["top", 1, 2, "L"]
+    assert jungler["roams"] == [] and row[0]["ganks"] is None and row[0]["short_lane"] is None
+    # The jungler's own death: 129 laned bot, the jungler counts as its own "lane", so any attacker is a ganker.
+    assert row[2]["deaths"] == [[480, "gank", [129]]]

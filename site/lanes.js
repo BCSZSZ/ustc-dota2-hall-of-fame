@@ -136,6 +136,51 @@ function laneCard(match, lane, label, rows, detail, ui) {
     notes.length ? el("p", { class: "draft-meta" }, notes) : null);
 }
 
+// What happened during a jungler's stays in a lane: kills it joined, its own death, or nothing.
+function visitOutcome(gank, ui, player) {
+  const [, , , kills, died] = gank;
+  const parts = [];
+  if (kills.length) parts.push("击杀 ", kills.map((slot) => ui.heroIcon(player(slot)?.hero)));
+  if (died) parts.push(ui.el("span", { class: "death-tag kind-gank" }, "阵亡"));
+  return parts.length ? parts : ui.el("span", { class: "draft-meta" }, "无击杀");
+}
+
+function shortLaneText(short) {
+  if (!short) return "—";
+  const [lane, held, against, result] = short;
+  return `${LANE_NAME[lane]} ${held} 对 ${against}${result ? `，对线结果${RESULT_TEXT[result]}` : ""}`;
+}
+
+function jungleCard(match, row, ui) {
+  const { el } = ui;
+  const me = ui.player(row.slot);
+  const them = row.opp !== null ? ui.player(row.opp) : null;
+  const pair = (mine, theirs) => `${mine ?? "—"} : ${theirs ?? "—"}`;
+  return el("article", { class: "lane-card jungle-card" },
+    el("h4", {}, `${row.slot < 128 ? "天辉" : "夜魇"}打野`, el("small", {}, `本队${shortLaneText(row.short_lane)}`)),
+    el("div", { class: "lane-sides" },
+      el("div", { class: `lane-side ${sideOf(row.slot)}` }, el("span", { class: "lane-player" }, ui.heroIcon(me?.hero), ui.playerLink(me?.account_id))),
+      them ? el("div", { class: `lane-side ${sideOf(row.opp)}` }, el("b", {}, `对方${row.short_lane ? LANE_NAME[row.short_lane[0]] : ""}辅助`),
+        el("span", { class: "lane-player" }, ui.heroIcon(them.hero), ui.playerLink(them.account_id))) : null),
+    el("div", { class: "table-scroll" }, el("table", { class: "data-table lane-table" },
+      el("thead", {}, el("tr", {}, ["与对方辅助比", "5′ 正补", "10′ 正补", "10′ 经济差", "10′ 经验差"].map((text) => el("th", { scope: "col" }, text)))),
+      el("tbody", {}, el("tr", {},
+        el("td", {}, ui.heroIcon(me?.hero), " vs ", them ? ui.heroIcon(them.hero) : "—"),
+        el("td", { class: "num" }, pair(row.lh5, row.opp_lh5)),
+        el("td", { class: "num" }, pair(row.lh10, row.opp_lh10)),
+        el("td", { class: "num" }, signed(diff(row.gold10, row.opp_gold10))),
+        el("td", { class: "num" }, signed(diff(row.xp10, row.opp_xp10))))))),
+    el("div", { class: "lane-events" },
+      el("div", {}, el("b", {}, "进入各路（10 分钟前，30 秒以上）"),
+        row.ganks?.length ? el("ul", {}, row.ganks.map((gank) => el("li", { class: sideOf(row.slot) },
+          el("span", { class: "num" }, `${clock(gank[0])}–${clock(gank[1])}`), `${LANE_NAME[gank[2]]}`, visitOutcome(gank, ui, ui.player))))
+          : el("span", { class: "draft-meta" }, row.ganks ? " 没有" : " 录像解析后显示")),
+      el("div", {}, el("b", {}, "对线期死亡"),
+        row.deaths?.length ? el("ul", {}, row.deaths.map(([t, , attackers]) => el("li", { class: sideOf(row.slot) },
+          el("span", { class: "num" }, clock(t)), attackers.length ? ["← ", attackers.map((slot) => ui.heroIcon(ui.player(slot)?.hero))] : "非英雄击杀")))
+          : el("span", { class: "draft-meta" }, row.deaths ? " 没有" : " 录像解析后显示"))));
+}
+
 export function laneReview(match, detail, ui) {
   const { el } = ui;
   const box = el("div", { class: "lane-review" }, el("p", { class: "draft-meta" }, "正在读取对线数据……"));
@@ -153,8 +198,11 @@ export function laneReview(match, detail, ui) {
         "分路按录像里 2:00–8:00 的位置判定。对位按号位把两边同一路的英雄配对（核心对核心、辅助对辅助）。",
         "对线结果按这一路双方 10 分钟经济总和比较，领先 10% 以上为优。曲线是差值，高于 0 为天辉一方领先。",
         "游走：10 分钟前进入另一条路 30 秒以上；拉野、回家、退守二塔不算。"),
-      junglers.length ? el("p", { class: "draft-meta" }, "打野：", junglers.map((row) => [ui.heroIcon(player(row.slot)?.hero), ` ${ui.heroName(player(row.slot)?.hero)} `])) : null,
-      el("div", { class: "lane-cards" }, LANES.map(([lane, label]) => laneCard(match, lane, label, mine, detail, context))),
+      el("div", { class: "lane-cards" }, LANES.map(([lane, label]) => laneCard(match, lane, label, mine, detail, context)),
+        junglers.map((row) => jungleCard(match, row, context))),
+      junglers.length ? el("p", { class: "draft-meta" },
+        "打野没有对线对手，和本队少人那一路的对方辅助比较发育（打野的正补含野怪）。进入各路：10 分钟前在某一路停留 30 秒以上，",
+        "其中有没有参与击杀或阵亡；开局在线上发育也会算进来，请结合时间判断是不是 gank。") : null,
     ].filter(Boolean));
   });
   return box;
@@ -182,7 +230,7 @@ export function laneSlots(games, ui) {
   loadLanes().then((rows) => {
     const byKey = new Map(rows.map((row) => [`${row.match_id}:${row.slot}`, row]));
     const mine = games.map((game) => ({ game, row: byKey.get(`${game.match.match_id}:${game.player.slot}`) })).filter((entry) => entry.row);
-    const jungle = mine.filter((entry) => entry.row.role === "jungle").length;
+    const jungle = mine.filter((entry) => entry.row.role === "jungle").sort((a, b) => a.game.match.start_time - b.game.match.start_time);
     const perGame = (list, pick) => (list.length ? (list.reduce((sum, entry) => sum + pick(entry), 0) / list.length).toFixed(1) : "—");
     const slot = ([role, label]) => {
       const list = mine.filter((entry) => entry.row.role === role).sort((a, b) => a.game.match.start_time - b.game.match.start_time);
@@ -208,12 +256,25 @@ export function laneSlots(games, ui) {
           .map(([id, games]) => el("span", { title: `${ui.heroName(id)} ${games} 场` }, ui.heroIcon(id), el("small", {}, games)))),
         trendDots(list.map((entry) => ({ ...entry.row, date: ui.formatDate(entry.game.match.start_time) })), ui));
     };
+    const jungleSlot = (list) => el("article", { class: "lane-slot jungle-slot" },
+      el("h4", {}, "打野", el("small", {}, `${list.length} 场 · 逐场列出，和本队少人那一路的对方辅助比较；打野的正补含野怪`)),
+      el("div", { class: "table-scroll" }, el("table", { class: "data-table lane-table" },
+        el("thead", {}, el("tr", {}, ["比赛", "英雄", "10′ 正补（本人 : 对方辅助）", "10′ 经济差", "进入各路（有击杀）", "对线期死亡", "本队单人路"]
+          .map((text) => el("th", { scope: "col" }, text)))),
+        el("tbody", {}, list.map(({ game, row }) => el("tr", {},
+          el("td", {}, el("a", { href: ui.matchHref(game.match.match_id) }, ui.formatDate(game.match.start_time))),
+          el("td", {}, ui.heroIcon(game.player.hero)),
+          el("td", { class: "num" }, `${row.lh10 ?? "—"} : ${row.opp_lh10 ?? "—"}`),
+          el("td", { class: "num" }, signed(diff(row.gold10, row.opp_gold10))),
+          el("td", { class: "num" }, row.ganks ? `${row.ganks.length}（${row.ganks.filter((gank) => gank[3].length).length}）` : "—"),
+          el("td", { class: "num" }, row.deaths ? row.deaths.length : "—"),
+          el("td", {}, shortLaneText(row.short_lane))))))));
     box.replaceChildren(
       el("p", { class: "draft-meta" },
         "分路按录像里 2:00–8:00 的位置判定，对位是同一路对面同类号位的英雄（核心对核心、辅助对辅助）。差值为本人减对位。",
-        "对线结果按这一路双方 10 分钟经济总和比较，领先 10% 以上为优。死亡类型：单杀只有一名同路敌人参与，对线有多名同路敌人，被 gank 有其他路或打野的敌人参与。",
-        jungle ? ` 另有 ${jungle} 场打野，不计入三路。` : ""),
-      el("div", { class: "lane-slot-grid" }, ROLES.map(slot)));
+        "对线结果按这一路双方 10 分钟经济总和比较，领先 10% 以上为优。死亡类型：单杀只有一名同路敌人参与，对线有多名同路敌人，被 gank 有其他路或打野的敌人参与。"),
+      el("div", { class: "lane-slot-grid" }, ROLES.map(slot)),
+      jungle.length ? jungleSlot(jungle) : "");
   });
   return box;
 }
