@@ -22,6 +22,20 @@ python collector.py --league-id 19224 --output site/data/league.json --refresh-r
 
 OpenDota Key 只保存在本机 `.env` 或 GitHub Actions Secret 中，不会提交到仓库。
 
+### 本地解析录像
+
+工作流用的是 `odota/parser` 的固定镜像。本地用同一时间的源码提交（`51c934f`）编译，需要 Java 21 和 Maven。启动后解析所有还没有热力图的录像，结果应与工作流生成的 `site/data/heat/` 逐字节相同。
+
+```bash
+git clone https://github.com/odota/parser.git ~/Development/tools/odota-parser
+cd ~/Development/tools/odota-parser && git checkout 51c934fba40858a6061b4b60bc4b79972d420d8a
+JAVA_HOME="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home" mvn -q clean install -U
+"$(brew --prefix openjdk@21)/bin/java" -jar target/stats-0.1.0.jar 5600
+python replays.py parse --data-dir site/data
+```
+
+`tests/fixtures/` 存有一场比赛的真实解析器位置输出，测试据此核对每名选手的存活秒数与 OpenDota 一致，平时不需要启动解析器。
+
 
 
 ## 天梯分登记和分队

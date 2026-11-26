@@ -118,3 +118,28 @@ def test_heat_todo_lists_archived_replays_without_a_heatmap(tmp_path: Path) -> N
         (replays / f"{match_id}.dem.bz2").write_bytes(REPLAY)
     (data / "heat" / "1.json").write_text("{}")
     assert heat_todo(replays, data) == [2]
+
+
+# Real odota/parser interval events for match 9098014345 (fields the heatmap reads), captured with the
+# parser commit pinned in pages.yml. Expected values come from OpenDota's own parse of the same match.
+PARSER_FIXTURE = Path(__file__).with_name("fixtures") / "parser_intervals_9098014345.jsonl.gz"
+OPENDOTA_HERO_AND_ALIVE_SECONDS = {
+    0: (30, 1857), 1: (113, 1813), 2: (102, 1824), 3: (88, 1887), 4: (8, 1941),
+    128: (85, 1971), 129: (44, 1982), 130: (129, 1933), 131: (80, 1920), 132: (21, 2039),
+}
+
+
+def test_heatmap_from_real_parser_output_matches_opendota() -> None:
+    import gzip
+
+    from replays import _player_slot
+
+    with gzip.open(PARSER_FIXTURE, "rt", encoding="utf-8") as lines:
+        entries = [json.loads(line) for line in lines]
+    heroes = {_player_slot(entry["slot"]): entry["hero_id"] for entry in entries if entry.get("hero_id")}
+    result = heatmap(entries)
+
+    assert result["duration"] == 2241
+    for slot, (hero_id, alive) in OPENDOTA_HERO_AND_ALIVE_SECONDS.items():
+        assert heroes[slot] == hero_id
+        assert sum(result["players"][str(slot)][3::4]) == alive
