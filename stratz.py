@@ -119,7 +119,7 @@ def summarise(match: dict[str, Any] | None) -> dict[str, Any] | None:
 def refresh_stratz(*, data_dir: Path, match_ids: Iterable[int], http: httpx.Client, now: datetime) -> dict[str, int]:
     """Fetch matches STRATZ has not scored yet; unscored ones are re-downloaded once and rechecked on the
     1/2/4/8/8... hour backoff in pending.json, then given up after a week. While a match has no IMP, its
-    per-minute snapshot is fetched once for the local estimate."""
+    per-minute snapshot is fetched on each run until STRATZ has one, then kept for the local estimate."""
     ids = list(match_ids)
     counted = {str(match_id) for match_id in ids}
     stored = _read(data_dir / "stratz.json")
@@ -132,19 +132,35 @@ def refresh_stratz(*, data_dir: Path, match_ids: Iterable[int], http: httpx.Clie
     for match_id in ids:
         key = str(match_id)
         entry = queue.get(key)
-        if key in known or match_id in unavailable or (entry and datetime.fromisoformat(entry["next_check_utc"]) > now):
+        if key in known:
             continue
-        try:
-            result = summarise(_post(http, MATCH_QUERY, match_id).get("match"))
-        except (httpx.HTTPError, ValueError, StratzError) as error:
-            print(f"STRATZ: match {match_id} failed ({error}); the next run tries again")
+        if match_id not in unavailable and not (entry and datetime.fromisoformat(entry["next_check_utc"]) > now):
+            try:
+                result = summarise(_post(http, MATCH_QUERY, match_id).get("match"))
+            except (httpx.HTTPError, ValueError, StratzError) as error:
+                print(f"STRATZ: match {match_id} failed ({error}); the next run tries again")
+                continue
+            fetched += 1
+            if result:
+                known[key] = result
+                queue.pop(key, None)
+                minute.pop(key, None)
+                continue
+            if entry is None:
+                entry = {"first_seen_utc": _iso(now), "attempts": 0}
+                try:
+                    _post(http, RETRY_DOWNLOAD, match_id)
+                except (httpx.HTTPError, ValueError, StratzError) as error:
+                    print(f"STRATZ: retry request for match {match_id} failed ({error})")
+            if now - datetime.fromisoformat(entry["first_seen_utc"]) >= GIVE_UP_AFTER:
+                queue.pop(key, None)
+                unavailable.add(match_id)
+            else:
+                queue[key] = schedule_retry(entry, now)
+        elif entry is None and match_id not in unavailable:
             continue
-        fetched += 1
-        if result:
-            known[key] = result
-            queue.pop(key, None)
-            minute.pop(key, None)
-            continue
+        # Without IMP, fetch the per-minute snapshot on every run until STRATZ has one, whatever the
+        # IMP retry schedule says, so even a match given up on still gets the better estimate.
         if key not in minute:
             try:
                 snapshot = minute_snapshot(_post(http, MINUTE_QUERY, match_id).get("match"))
@@ -153,17 +169,6 @@ def refresh_stratz(*, data_dir: Path, match_ids: Iterable[int], http: httpx.Clie
                 snapshot = None
             if snapshot:
                 minute[key] = snapshot
-        if entry is None:
-            entry = {"first_seen_utc": _iso(now), "attempts": 0}
-            try:
-                _post(http, RETRY_DOWNLOAD, match_id)
-            except (httpx.HTTPError, ValueError, StratzError) as error:
-                print(f"STRATZ: retry request for match {match_id} failed ({error})")
-        if now - datetime.fromisoformat(entry["first_seen_utc"]) >= GIVE_UP_AFTER:
-            queue.pop(key, None)
-            unavailable.add(match_id)
-        else:
-            queue[key] = schedule_retry(entry, now)
     state["stratz"] = queue
     state["stratz_unavailable"] = sorted(unavailable)
     _write(data_dir / "pending.json", state)

@@ -46,7 +46,8 @@ def test_known_and_not_yet_due_matches_are_skipped(tmp_path: Path) -> None:
     refresh_stratz(data_dir=tmp_path, match_ids=[1, 2], http=client({1: scored(5), 2: scored(None)}, calls), now=NOW)
     calls.clear()
     refresh_stratz(data_dir=tmp_path, match_ids=[1, 2], http=client({}, calls), now=NOW + timedelta(minutes=30))
-    assert calls == []
+    # Only the per-minute snapshot of the unscored match is asked for again; no IMP check is due.
+    assert calls == [("query", 2)]
 
 
 def test_gives_up_after_a_week(tmp_path: Path) -> None:
@@ -98,3 +99,16 @@ def test_unscored_match_keeps_a_snapshot_until_stratz_scores_it(tmp_path: Path) 
     refresh_stratz(data_dir=tmp_path, match_ids=[2], http=client({2: with_minutes(7)}, calls), now=NOW + timedelta(hours=2))
     stored = read(tmp_path, "stratz.json")
     assert stored["minute"] == {} and stored["matches"]["2"]["imp"]["0"] == 7
+
+
+def test_snapshot_is_fetched_even_when_the_imp_check_is_not_due(tmp_path: Path) -> None:
+    calls: list = []
+    # First run: STRATZ has not parsed the match yet, so no snapshot either.
+    refresh_stratz(data_dir=tmp_path, match_ids=[2], http=client({2: scored(None)}, calls), now=NOW)
+    # Thirty minutes later the IMP check is not due, but the snapshot is fetched once STRATZ has it.
+    calls.clear()
+    result = refresh_stratz(data_dir=tmp_path, match_ids=[2], http=client({2: with_minutes(None)}, calls), now=NOW + timedelta(minutes=30))
+    assert result["per_minute"] == 1 and len(calls) == 1
+    calls.clear()
+    refresh_stratz(data_dir=tmp_path, match_ids=[2], http=client({2: with_minutes(None)}, calls), now=NOW + timedelta(minutes=40))
+    assert calls == []
