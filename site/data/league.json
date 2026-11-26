@@ -6,12 +6,12 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-25T08:36:05.820503+00:00",
+  "generated_at_utc": "2026-11-26T00:22:20.583062+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
-    "match_ids_returned": 15,
-    "matches_available": 14,
+    "match_ids_returned": 19,
+    "matches_available": 18,
     "unavailable_matches": [],
     "anonymous_player_slots": 0,
     "incomplete_roster_match_ids": [
@@ -51,7 +51,8 @@
     "883819932": "被狼认可的牧羊人",
     "1007302804": "飞鞋计划",
     "1068845781": "Reisen suki",
-    "1098196409": "玄德"
+    "1098196409": "玄德",
+    "1130047837": "昭昭"
   },
   "opendota_rank_tiers": {
     "122251899": 73,
@@ -83,7 +84,8 @@
     "883819932": 80,
     "1007302804": 73,
     "1068845781": 72,
-    "1098196409": 62
+    "1098196409": 62,
+    "1130047837": 80
   },
   "matches": [
     {
@@ -1049,6 +1051,282 @@
           "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
           "player_slot": 132,
           "hero_id": 102
+        }
+      ]
+    },
+    {
+      "match_id": 9104938490,
+      "league_id": 19224,
+      "start_time": 1795610020,
+      "duration": 2345,
+      "radiant_win": true,
+      "players": [
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 0,
+          "hero_id": 93
+        },
+        {
+          "account_id": 1130047837,
+          "personaname": "昭昭",
+          "player_slot": 1,
+          "hero_id": 39
+        },
+        {
+          "account_id": 292823960,
+          "personaname": "最上30",
+          "player_slot": 2,
+          "hero_id": 86
+        },
+        {
+          "account_id": 255076729,
+          "personaname": "Stellaris",
+          "player_slot": 3,
+          "hero_id": 137
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 4,
+          "hero_id": 30
+        },
+        {
+          "account_id": 1068845781,
+          "personaname": "Reisen suki",
+          "player_slot": 128,
+          "hero_id": 50
+        },
+        {
+          "account_id": 341531496,
+          "personaname": "我永远喜欢椎名真昼",
+          "player_slot": 129,
+          "hero_id": 42
+        },
+        {
+          "account_id": 1007302804,
+          "personaname": "飞鞋计划",
+          "player_slot": 130,
+          "hero_id": 85
+        },
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 131,
+          "hero_id": 92
+        },
+        {
+          "account_id": 883819932,
+          "personaname": "被狼认可的牧羊人",
+          "player_slot": 132,
+          "hero_id": 16
+        }
+      ]
+    },
+    {
+      "match_id": 9105011693,
+      "league_id": 19224,
+      "start_time": 1795613472,
+      "duration": 1702,
+      "radiant_win": true,
+      "players": [
+        {
+          "account_id": 883819932,
+          "personaname": "被狼认可的牧羊人",
+          "player_slot": 0,
+          "hero_id": 52
+        },
+        {
+          "account_id": 341531496,
+          "personaname": "我永远喜欢椎名真昼",
+          "player_slot": 1,
+          "hero_id": 12
+        },
+        {
+          "account_id": 255076729,
+          "personaname": "Stellaris",
+          "player_slot": 2,
+          "hero_id": 7
+        },
+        {
+          "account_id": 1007302804,
+          "personaname": "飞鞋计划",
+          "player_slot": 3,
+          "hero_id": 72
+        },
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 4,
+          "hero_id": 85
+        },
+        {
+          "account_id": 292823960,
+          "personaname": "最上30",
+          "player_slot": 128,
+          "hero_id": 102
+        },
+        {
+          "account_id": 1130047837,
+          "personaname": "昭昭",
+          "player_slot": 129,
+          "hero_id": 22
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 130,
+          "hero_id": 93
+        },
+        {
+          "account_id": 1068845781,
+          "personaname": "Reisen suki",
+          "player_slot": 131,
+          "hero_id": 21
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 132,
+          "hero_id": 30
+        }
+      ]
+    },
+    {
+      "match_id": 9105077682,
+      "league_id": 19224,
+      "start_time": 1795616324,
+      "duration": 1205,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 0,
+          "hero_id": 128
+        },
+        {
+          "account_id": 1130047837,
+          "personaname": "昭昭",
+          "player_slot": 1,
+          "hero_id": 93
+        },
+        {
+          "account_id": 255076729,
+          "personaname": "Stellaris",
+          "player_slot": 2,
+          "hero_id": 2
+        },
+        {
+          "account_id": 292823960,
+          "personaname": "最上30",
+          "player_slot": 3,
+          "hero_id": 6
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 4,
+          "hero_id": 121
+        },
+        {
+          "account_id": 883819932,
+          "personaname": "被狼认可的牧羊人",
+          "player_slot": 128,
+          "hero_id": 38
+        },
+        {
+          "account_id": 140721966,
+          "personaname": "Hayabusa",
+          "player_slot": 129,
+          "hero_id": 21
+        },
+        {
+          "account_id": 341531496,
+          "personaname": "我永远喜欢椎名真昼",
+          "player_slot": 130,
+          "hero_id": 62
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 131,
+          "hero_id": 10
+        },
+        {
+          "account_id": 1068845781,
+          "personaname": "Reisen suki",
+          "player_slot": 132,
+          "hero_id": 68
+        }
+      ]
+    },
+    {
+      "match_id": 9105138423,
+      "league_id": 19224,
+      "start_time": 1795618926,
+      "duration": 3589,
+      "radiant_win": true,
+      "players": [
+        {
+          "account_id": 341531496,
+          "personaname": "我永远喜欢椎名真昼",
+          "player_slot": 0,
+          "hero_id": 28
+        },
+        {
+          "account_id": 140721966,
+          "personaname": "Hayabusa",
+          "player_slot": 1,
+          "hero_id": 119
+        },
+        {
+          "account_id": 1007302804,
+          "personaname": "飞鞋计划",
+          "player_slot": 2,
+          "hero_id": 2
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 3,
+          "hero_id": 109
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 4,
+          "hero_id": 75
+        },
+        {
+          "account_id": 883819932,
+          "personaname": "被狼认可的牧羊人",
+          "player_slot": 128,
+          "hero_id": 114
+        },
+        {
+          "account_id": 1130047837,
+          "personaname": "昭昭",
+          "player_slot": 129,
+          "hero_id": 93
+        },
+        {
+          "account_id": 292823960,
+          "personaname": "最上30",
+          "player_slot": 130,
+          "hero_id": 86
+        },
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 131,
+          "hero_id": 36
+        },
+        {
+          "account_id": 182754056,
+          "personaname": "nameless422",
+          "player_slot": 132,
+          "hero_id": 111
         }
       ]
     }
