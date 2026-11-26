@@ -1,5 +1,5 @@
 import { buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=5";
-import { loadSharedMmr } from "./shared-mmr.js?v=2";
+import { loadSharedMmr } from "./shared-mmr.js?v=3";
 
 const form = document.querySelector("#draftForm");
 const inputs = document.querySelector("#draftInputs");

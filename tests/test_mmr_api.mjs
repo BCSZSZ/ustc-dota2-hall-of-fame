@@ -51,7 +51,7 @@ function setup(t, beforeWrite) {
     body,
   });
   const put = (revision, changes, aliases) => putRaw(JSON.stringify({ revision, changes, aliases }));
-  return { request, put, putRaw, roster };
+  return { env, request, put, putRaw, roster };
 }
 
 test("serves an uncached public state and allows CORS from GitHub Pages", async (t) => {
@@ -81,6 +81,25 @@ test("serves an uncached public state and allows CORS from GitHub Pages", async 
   assert.equal((await request({ method: "POST" })).status, 405);
   assert.equal((await request({}, `${url}/unrecognized`)).status, 404);
   assert.equal(roster.mock.callCount(), 0);
+});
+
+test("keeps state and preflight available when writes are paused", async (t) => {
+  const { env, request, put, putRaw, roster } = setup(t);
+  const initial = await put(0, { 1: 3000 }, { 1: "平宝" });
+  assert.equal(initial.status, 200);
+  const saved = await initial.json();
+  env.MMR_READ_ONLY = "true";
+
+  const paused = await put(1, { 1: 4000 });
+  assert.equal(paused.status, 503);
+  assert.equal(paused.headers.get("Access-Control-Allow-Origin"), origin);
+  assert.equal(paused.headers.get("Cache-Control"), "no-store");
+  assert.deepEqual(await paused.json(), { error: "Shared MMR updates are temporarily paused" });
+  assert.equal((await putRaw("{")).status, 503);
+  assert.equal((await request({ method: "PUT" })).status, 403);
+  assert.equal((await request({ method: "OPTIONS", headers: { Origin: origin } })).status, 204);
+  assert.equal(roster.mock.callCount(), 1);
+  assert.deepEqual(await (await request()).json(), saved);
 });
 
 test("persists only changed ratings and clears a single override with null", async (t) => {

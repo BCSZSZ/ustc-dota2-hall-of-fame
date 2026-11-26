@@ -1,4 +1,4 @@
-import { loadPlayerAliases } from "./shared-mmr.js?v=2";
+import { loadPlayerAliases } from "./shared-mmr.js?v=3";
 
 const JST_OFFSET = "+09:00";
 const DAY_SECONDS = 86_400;

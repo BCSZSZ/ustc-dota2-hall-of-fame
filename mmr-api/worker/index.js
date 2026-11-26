@@ -82,7 +82,7 @@ async function readState(db) {
 }
 
 export default {
-  async fetch(request, { DB }) {
+  async fetch(request, { DB, MMR_READ_ONLY }) {
     const { method } = request;
     const allowedOrigin = request.headers.get("Origin") === PAGES_ORIGIN;
     const headers = { "Cache-Control": "no-store", Vary: "Origin" };
@@ -104,6 +104,9 @@ export default {
     if (method !== "GET" && method !== "PUT") {
       headers.Allow = METHODS;
       return error(405, "Method not allowed");
+    }
+    if (method === "PUT" && MMR_READ_ONLY === "true") {
+      return error(503, "Shared MMR updates are temporarily paused");
     }
 
     try {

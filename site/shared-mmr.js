@@ -9,7 +9,7 @@ export function validAlias(alias) {
   return alias !== "" && alias === alias.trim() && [...alias].length <= MAX_ALIAS_CHARS && !HIDDEN_CHARS.test(alias);
 }
 
-async function readState(response) {
+export async function readState(response) {
   const state = await response.json();
   if (!Number.isSafeInteger(state?.revision) || state.revision < 0 ||
       !isObject(state.ratings) ||
@@ -22,19 +22,29 @@ async function readState(response) {
   return state;
 }
 
+async function requestState(options, timeout) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(endpoint, { ...options, signal: controller.signal });
+    const conflict = response.status === 409 && options.method === "PUT";
+    if (!response.ok && !conflict) throw new Error("Shared MMR returned HTTP " + response.status);
+    return { state: await readState(response), conflict };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function loadSharedMmr() {
-  const response = await fetch(endpoint, { cache: "no-store", signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new Error("Could not read shared MMR (HTTP " + response.status + ")");
-  return readState(response);
+  return (await requestState({ cache: "no-store" }, 10000)).state;
 }
 
 // Player aliases replace Steam names everywhere except the registration page.
 // Pages still render with Steam names when the shared service is slow or down.
 export async function loadPlayerAliases() {
   try {
-    const response = await fetch(endpoint, { cache: "no-store", signal: AbortSignal.timeout(4000) });
-    if (!response.ok) throw new Error("HTTP " + response.status);
-    return (await readState(response)).aliases ?? {};
+    const { state } = await requestState({ cache: "no-store" }, 4000);
+    return state.aliases ?? {};
   } catch (error) {
     console.error("Could not read player aliases", error);
     return {};
@@ -42,15 +52,9 @@ export async function loadPlayerAliases() {
 }
 
 export async function saveSharedMmr(revision, changes, aliases = {}) {
-  const response = await fetch(endpoint, {
+  return requestState({
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ revision, changes, aliases }),
-    signal: AbortSignal.timeout(10000),
-  });
-  const conflict = response.status === 409;
-  if (!response.ok && !conflict) {
-    throw new Error("Could not save shared MMR (HTTP " + response.status + ")");
-  }
-  return { state: await readState(response), conflict };
+  }, 10000);
 }
