@@ -467,6 +467,15 @@ async function loadData() {
   }
   Object.assign(state.names, league.player_names || {}, aliases);
   state.matches = summaries.matches || [];
+  // Positions corrected after the replay parse (junglers) or by hand replace OpenDota's estimate everywhere.
+  const positions = await fetch("./data/positions.json", { cache: "no-store" })
+    .then((response) => (response.ok ? response.json() : {})).catch(() => ({}));
+  for (const match of state.matches) {
+    for (const player of match.players) {
+      const fixed = positions[match.match_id]?.[player.slot];
+      if (fixed) Object.assign(player, { pos: fixed.pos, pos_source: fixed.source });
+    }
+  }
   computeScores();
   if (state.matches.length) {
     state.min = Math.min(...state.matches.map((match) => match.start_time));

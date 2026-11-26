@@ -291,13 +291,47 @@ def _at(values: list[Any], minute: int) -> Any:
     return values[minute] if isinstance(values, list) and len(values) > minute else None
 
 
-def build_lane_index(data_dir: Path) -> int:
-    """Per player and match: laning-phase lane, counterpart, 5/10-minute numbers, deaths, roams and wards.
+def _short_lane(slot: int, players: list[dict[str, Any]], lane_of: dict[int, str]) -> tuple[str, int, int] | None:
+    """The lane a jungler's side is short in: the biggest deficit, preferring a lane someone still held."""
+    count = lambda lane, radiant: sum(lane_of[p["slot"]] == lane and (p["slot"] < 128) == radiant for p in players)
+    short = [(count(lane, slot >= 128) - count(lane, slot < 128), count(lane, slot < 128), lane)
+             for lane in ("top", "mid", "bot") if count(lane, slot < 128) < count(lane, slot >= 128)]
+    if not short:
+        return None
+    _, held, lane = max(short)
+    return lane, held, count(lane, slot >= 128)
 
-    Writes site/data/lanes.json. The lane comes from site/data/lane_overrides.json when set there, then from the
-    replay, then from OpenDota. Counterparts pair the two sides' heroes in a lane in position order (core with core).
+
+def _is_core(pos: Any) -> bool:
+    return isinstance(pos, int) and pos <= 3
+
+
+def _pair(side_a: list[dict[str, Any]], side_b: list[dict[str, Any]], pos_of: dict[int, Any]) -> list[tuple[int, int]]:
+    """Pair a lane's two sides core with core and support with support, then any leftovers in position order."""
+    order = lambda players: sorted(players, key=lambda player: (pos_of.get(player["slot"]) or 9, player["slot"]))
+    pairs, left_a, left_b = [], [], []
+    for core in (True, False):
+        a = order([player for player in side_a if _is_core(pos_of.get(player["slot"])) == core])
+        b = order([player for player in side_b if _is_core(pos_of.get(player["slot"])) == core])
+        pairs += [(x["slot"], y["slot"]) for x, y in zip(a, b)]
+        left_a += a[len(b):]
+        left_b += b[len(a):]
+    pairs += [(x["slot"], y["slot"]) for x, y in zip(order(left_a), order(left_b))]
+    return pairs
+
+
+def build_lane_index(data_dir: Path) -> int:
+    """Per player and match: laning-phase lane, final position, counterpart, 5/10-minute numbers, deaths, roams.
+
+    Writes site/data/lanes.json and site/data/positions.json. The lane comes from site/data/lane_overrides.json
+    when set there, then from the replay, then from OpenDota. Positions are OpenDota's estimate except for a
+    jungler and the teammate left alone in the lane its side is short in: whichever had more net worth at 10:00 is
+    that lane's core (1 in the safe lane, 3 in the off lane) and the other its support (5 or 4).
+    site/data/position_overrides.json overrides both. Counterparts pair core with core and support with support.
     """
     overrides = _read(data_dir / "lane_overrides.json")
+    position_overrides = _read(data_dir / "position_overrides.json")
+    positions: dict[str, dict[str, Any]] = {}
     rows = []
     for match in _read(data_dir / "matches.json").get("matches", []):
         match_id = match["match_id"]
@@ -317,12 +351,30 @@ def build_lane_index(data_dir: Path) -> int:
             else:
                 lane_of[slot], source_of[slot] = _opendota_lane(slot < 128, player.get("lane_role")), "opendota"
         value = lambda slot, key, minute: _at((series.get(str(slot)) or {}).get(key), minute)
+        pos_of = {player["slot"]: player.get("pos") for player in players}
+        pos_source = {}
+        for player in players:
+            slot = player["slot"]
+            short = _short_lane(slot, players, lane_of) if lane_of[slot] == "jungle" else None
+            mates = [p["slot"] for p in players if short and lane_of[p["slot"]] == short[0] and (p["slot"] < 128) == (slot < 128)]
+            if short and len(mates) == 1:
+                core, support = (1, 5) if _role(slot < 128, short[0]) == "safe" else (3, 4)
+                jungler_core = (value(slot, "gold", 10) or 0) >= (value(mates[0], "gold", 10) or 0)
+                pos_of[slot], pos_of[mates[0]] = (core, support) if jungler_core else (support, core)
+                pos_source[slot] = pos_source[mates[0]] = "jungle"
+        for slot, pos in (position_overrides.get(str(match_id)) or {}).items():
+            if int(slot) in pos_of:
+                pos_of[int(slot)], pos_source[int(slot)] = int(pos), "manual"
+        for player in players:
+            if pos_of[player["slot"]] != player.get("pos"):
+                positions.setdefault(str(match_id), {})[str(player["slot"])] = {
+                    "pos": pos_of[player["slot"]], "source": pos_source.get(player["slot"], "jungle"), "opendota": player.get("pos")}
         opp, result, lane_diff = {}, {}, {}
         for lane in ("top", "mid", "bot"):
-            sides = [sorted((player for player in players if lane_of[player["slot"]] == lane and (player["slot"] < 128) == radiant),
-                            key=lambda player: (player.get("pos") or 9, player["slot"])) for radiant in (True, False)]
-            for mine, theirs in zip(*sides):
-                opp[mine["slot"]], opp[theirs["slot"]] = theirs["slot"], mine["slot"]
+            sides = [[player for player in players if lane_of[player["slot"]] == lane and (player["slot"] < 128) == radiant]
+                     for radiant in (True, False)]
+            for mine, theirs in _pair(sides[0], sides[1], pos_of):
+                opp[mine], opp[theirs] = theirs, mine
             totals = [sum(value(player["slot"], "gold", 10) or 0 for player in side) for side in sides]
             if all(sides):
                 for index, side in enumerate(sides):
@@ -351,18 +403,16 @@ def build_lane_index(data_dir: Path) -> int:
                     died = any(death["slot"] == slot and start <= death["t"] <= end + GANK_GRACE for death in early)
                     ganks.append([start, end, lane, kills, int(died)])
             if lane_of[slot] == "jungle":
-                count = lambda lane, radiant: sum(lane_of[p["slot"]] == lane and (p["slot"] < 128) == radiant for p in players)
-                # The lane the jungler's side is short in: the biggest deficit, preferring a lane someone still held.
-                short = [(count(lane, slot >= 128) - count(lane, slot < 128), count(lane, slot < 128), lane)
-                         for lane in ("top", "mid", "bot") if count(lane, slot < 128) < count(lane, slot >= 128)]
+                short = _short_lane(slot, players, lane_of)
                 if short:
-                    _, held, lane = max(short)
+                    lane, held, against = short
                     mate = next((p["slot"] for p in players if lane_of[p["slot"]] == lane and (p["slot"] < 128) == (slot < 128)), None)
-                    short_lane = [lane, held, count(lane, slot >= 128), result.get(mate) if mate is not None else None]
-                    # A jungler is a support taken out of a lane, so it faces that lane's enemy support: the enemy
-                    # there that the lane pairing left without a counterpart, else its highest position.
+                    short_lane = [lane, held, against, result.get(mate) if mate is not None else None]
+                    # A jungler faces the enemy in that lane the pairing left without a counterpart, preferring
+                    # one of its own kind: an enemy support for a support jungler, an enemy core for a core.
                     enemies = sorted((p for p in players if lane_of[p["slot"]] == lane and (p["slot"] < 128) != (slot < 128)),
-                                     key=lambda p: (p["slot"] not in opp, p.get("pos") or 0))
+                                     key=lambda p: (p["slot"] not in opp, _is_core(pos_of[p["slot"]]) == _is_core(pos_of[slot]),
+                                                    -(pos_of[p["slot"]] or 0)))
                     if enemies:
                         other = enemies[-1]["slot"]
             rows.append([
@@ -390,4 +440,5 @@ def build_lane_index(data_dir: Path) -> int:
                 for key in ("lh5", "lh10", "gold5", "gold10", "xp10"):
                     support[columns[f"opp_{key}"]] = row[columns[key]]
     _write(data_dir / "lanes.json", {"columns": LANE_COLUMNS, "rows": rows})
+    _write(data_dir / "positions.json", positions)
     return len(rows)

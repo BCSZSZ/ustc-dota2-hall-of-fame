@@ -1,11 +1,11 @@
 // Player page: player.html?id=<account_id>[&from=YYYY-MM-DD&to=YYYY-MM-DD].
 
-import { laneSlots } from "./lanes.js?v=3";
+import { laneSlots } from "./lanes.js?v=4";
 import {
   LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, kda,
   loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, section,
   smoothed, sortableTable, state, statCard, titleChip, visibleMatches,
-} from "./stats-core.js?v=2";
+} from "./stats-core.js?v=3";
 
 function playerDetail(games, matches) {
   const everyone = matches.flatMap((match) => match.players);

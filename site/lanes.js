@@ -157,13 +157,13 @@ function jungleCard(match, row, ui) {
   const them = row.opp !== null ? ui.player(row.opp) : null;
   const pair = (mine, theirs) => `${mine ?? "—"} : ${theirs ?? "—"}`;
   return el("article", { class: "lane-card jungle-card" },
-    el("h4", {}, `${row.slot < 128 ? "天辉" : "夜魇"}打野`, el("small", {}, `本队${shortLaneText(row.short_lane)}`)),
+    el("h4", {}, `${row.slot < 128 ? "天辉" : "夜魇"}打野`, el("small", {}, `按 ${me?.pos ?? "—"} 号位算 · 本队${shortLaneText(row.short_lane)}`)),
     el("div", { class: "lane-sides" },
       el("div", { class: `lane-side ${sideOf(row.slot)}` }, el("span", { class: "lane-player" }, ui.heroIcon(me?.hero), ui.playerLink(me?.account_id))),
-      them ? el("div", { class: `lane-side ${sideOf(row.opp)}` }, el("b", {}, `对方${row.short_lane ? LANE_NAME[row.short_lane[0]] : ""}辅助`),
+      them ? el("div", { class: `lane-side ${sideOf(row.opp)}` }, el("b", {}, `对方${row.short_lane ? LANE_NAME[row.short_lane[0]] : ""}${them.pos <= 3 ? "核心" : "辅助"}`),
         el("span", { class: "lane-player" }, ui.heroIcon(them.hero), ui.playerLink(them.account_id))) : null),
     el("div", { class: "table-scroll" }, el("table", { class: "data-table lane-table" },
-      el("thead", {}, el("tr", {}, ["与对方辅助比", "5′ 正补", "10′ 正补", "10′ 经济差", "10′ 经验差"].map((text) => el("th", { scope: "col" }, text)))),
+      el("thead", {}, el("tr", {}, ["对位", "5′ 正补", "10′ 正补", "10′ 经济差", "10′ 经验差"].map((text) => el("th", { scope: "col" }, text)))),
       el("tbody", {}, el("tr", {},
         el("td", {}, ui.heroIcon(me?.hero), " vs ", them ? ui.heroIcon(them.hero) : "—"),
         el("td", { class: "num" }, pair(row.lh5, row.opp_lh5)),
@@ -201,7 +201,8 @@ export function laneReview(match, detail, ui) {
       el("div", { class: "lane-cards" }, LANES.map(([lane, label]) => laneCard(match, lane, label, mine, detail, context)),
         junglers.map((row) => jungleCard(match, row, context))),
       junglers.length ? el("p", { class: "draft-meta" },
-        "打野没有对线对手，和本队少人那一路的对方辅助比较发育（打野的正补含野怪）。进入各路：10 分钟前在某一路停留 30 秒以上，",
+        "打野和本队少人那一路留下的队友比 10 分钟经济，高的一方算这一路的核心（优势路 1 号位、劣势路 3 号位），另一方算辅助（5 或 4 号位）；",
+        "打野对位那一路对面同类（核心或辅助）的英雄。打野的正补含野怪。进入各路：10 分钟前在某一路停留 30 秒以上，",
         "其中有没有参与击杀或阵亡；开局在线上发育也会算进来，请结合时间判断是不是 gank。") : null,
     ].filter(Boolean));
   });
@@ -257,13 +258,14 @@ export function laneSlots(games, ui) {
         trendDots(list.map((entry) => ({ ...entry.row, date: ui.formatDate(entry.game.match.start_time) })), ui));
     };
     const jungleSlot = (list) => el("article", { class: "lane-slot jungle-slot" },
-      el("h4", {}, "打野", el("small", {}, `${list.length} 场 · 逐场列出，和本队少人那一路的对方辅助比较；打野的正补含野怪`)),
+      el("h4", {}, "打野", el("small", {}, `${list.length} 场 · 逐场列出；和本队少人那一路对面同类（核心或辅助）的英雄对位，打野的正补含野怪`)),
       el("div", { class: "table-scroll" }, el("table", { class: "data-table lane-table" },
-        el("thead", {}, el("tr", {}, ["比赛", "英雄", "10′ 正补（本人 : 对方辅助）", "10′ 经济差", "进入各路（有击杀）", "对线期死亡", "本队单人路"]
+        el("thead", {}, el("tr", {}, ["比赛", "英雄", "号位", "10′ 正补（本人 : 对位）", "10′ 经济差", "进入各路（有击杀）", "对线期死亡", "本队单人路"]
           .map((text) => el("th", { scope: "col" }, text)))),
         el("tbody", {}, list.map(({ game, row }) => el("tr", {},
           el("td", {}, el("a", { href: ui.matchHref(game.match.match_id) }, ui.formatDate(game.match.start_time))),
           el("td", {}, ui.heroIcon(game.player.hero)),
+          el("td", { class: "num" }, game.player.pos ? `${game.player.pos} 号位` : "—"),
           el("td", { class: "num" }, `${row.lh10 ?? "—"} : ${row.opp_lh10 ?? "—"}`),
           el("td", { class: "num" }, signed(diff(row.gold10, row.opp_gold10))),
           el("td", { class: "num" }, row.ganks ? `${row.ganks.length}（${row.ganks.filter((gank) => gank[3].length).length}）` : "—"),

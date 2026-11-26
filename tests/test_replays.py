@@ -339,7 +339,7 @@ def test_lane_index_pairs_counterparts_and_classifies_laning_deaths(tmp_path: Pa
     assert row[0]["lh10"] == 10 and row[0]["opp_lh10"] == 10 and row[0]["gold10"] == 4000 and row[0]["opp_gold10"] == 3000
 
 
-def test_jungler_visits_become_ganks_facing_the_short_lane_support(tmp_path: Path) -> None:
+def test_jungler_position_ganks_and_counterpart(tmp_path: Path) -> None:
     from replay_events import LANE_ANCHORS, REPLAY_VERSION, build_lane_index, lane_events
 
     top = LANE_ANCHORS["top"]
@@ -365,9 +365,21 @@ def test_jungler_visits_become_ganks_facing_the_short_lane_support(tmp_path: Pat
     index = json.loads((tmp_path / "lanes.json").read_text())
     row = {r[1]: dict(zip(index["columns"], r)) for r in index["rows"]}
     jungler = row[2]
-    # Radiant is short in top (1 v 2); the jungler faces the Dire support there, and that support faces it back.
-    assert (jungler["role"], jungler["opp"], jungler["opp_gold10"], jungler["result"]) == ("jungle", 130, 1500, None)
-    assert (row[130]["opp"], row[130]["opp_gold10"], row[128]["opp"]) == (2, 3000, 0)
+    # Radiant is short in top (1 v 2). The jungler out-farmed slot 0 by 10:00, so it is that off lane's core (3) and
+    # slot 0 its support (4): slot 0 pairs with the Dire support and the jungler faces the Dire core, and back.
+    assert json.loads((tmp_path / "positions.json").read_text()) == {"7": {
+        "0": {"pos": 4, "source": "jungle", "opendota": 1}}}
+    assert (jungler["role"], jungler["opp"], jungler["opp_gold10"], jungler["result"]) == ("jungle", 128, 3000, None)
+    assert (row[0]["opp"], row[130]["opp"], row[128]["opp"], row[128]["opp_gold10"]) == (130, 0, 2, 3000)
+
+    # A manual position wins: as a support the jungler faces the Dire support instead.
+    (tmp_path / "position_overrides.json").write_text(json.dumps({"7": {"2": 4, "0": 3}}))
+    build_lane_index(tmp_path)
+    index = json.loads((tmp_path / "lanes.json").read_text())
+    row = {r[1]: dict(zip(index["columns"], r)) for r in index["rows"]}
+    assert json.loads((tmp_path / "positions.json").read_text())["7"] == {
+        "0": {"pos": 3, "source": "manual", "opendota": 1}, "2": {"pos": 4, "source": "manual", "opendota": 3}}
+    assert (row[2]["opp"], row[0]["opp"], row[130]["opp"]) == (130, 128, 2)
     assert jungler["ganks"] == [[300, 339, "top", [128], 0], [450, 490, "bot", [], 1]]
     assert jungler["short_lane"] == ["top", 1, 2, "L"]
     assert jungler["roams"] == [] and row[0]["ganks"] is None and row[0]["short_lane"] is None
