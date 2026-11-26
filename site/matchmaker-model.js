@@ -3,6 +3,8 @@ const ELO_K = 50;
 const MIN_WIN_CHANCE = 0.45;
 const MAX_WIN_CHANCE = 0.55;
 const PLAN_LIMIT = 5;
+// Shown when no split reaches the 45%-55% range.
+const FALLBACK_LIMIT = 3;
 const DIVERSITY_SLACK = 0.01;
 
 // The configured medal bands span 770 points from Herald through Ancient and
@@ -229,7 +231,7 @@ export function findBalancedTeams(captainA, captainB, others) {
   plans.sort(compareBalance);
   const qualifying = plans.filter(({ winChanceA }) =>
     winChanceA >= MIN_WIN_CHANCE && winChanceA <= MAX_WIN_CHANCE);
-  let shown = qualifying.length ? qualifying : plans.slice(0, 1);
+  let shown = qualifying.length ? qualifying : plans.slice(0, FALLBACK_LIMIT);
   if (qualifying.length > PLAN_LIMIT) {
     const fifthBest = qualifying[PLAN_LIMIT - 1];
     const limit = expectedWinChance(fifthBest.ratingGap) + DIVERSITY_SLACK;

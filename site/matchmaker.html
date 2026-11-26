@@ -9,7 +9,7 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css?v=20261125-5" />
     <link rel="stylesheet" href="./matchmaker.css?v=2" />
-    <script src="./matchmaker.js?v=2" type="module"></script>
+    <script src="./matchmaker.js?v=3" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">
@@ -70,7 +70,7 @@
         <summary>评分与筛选规则</summary>
         <p>基准分优先使用手填天梯 MMR，其次取 OpenDota 最近有效段位的分段中点。冠绝一世暂用 6000 作代表值。没有公开段位时，用联赛段位估分的中位数暂估。</p>
         <p>内战 Elo 从每个人的基准分起算。综合分按个人有效内战场数采纳 Elo 修正，4 场采纳 10%，12 场 25%，36 场起 50%。</p>
-        <p>预计胜率由两队平均综合分按 Elo 公式计算。超过五套符合 45%–55% 时，保留最接近 50% 的一套，再优先选队员多换边的方案。候选与五五开的偏差最多比严格第 5 名多 1 个百分点。</p>
+        <p>预计胜率由两队平均综合分按 Elo 公式计算。超过五套符合 45%–55% 时，保留最接近 50% 的一套，再优先选队员多换边的方案。候选与五五开的偏差最多比严格第 5 名多 1 个百分点。没有任何分法落在 45%–55% 时，列出最接近五五开的 3 套。</p>
       </details>
     </main>
   </body>

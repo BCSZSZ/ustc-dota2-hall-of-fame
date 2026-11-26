@@ -229,7 +229,7 @@ test("returns every qualifying split when there are at most five", () => {
   assert.deepEqual(plans.map((plan) => plan.winChanceA), [0.5, 0.5, 0.5, 0.5]);
 });
 
-test("accepts the two inclusive probability bounds and falls back to the closest split", () => {
+test("accepts the two inclusive probability bounds and falls back to the three closest splits", () => {
   const [captainA, captainB, ...others] = playersForRatings([0, 2000 * Math.log10(11 / 9), ...Array(8).fill(0)]);
   assert.equal(findBalancedTeams(captainA, captainB, others).withinRange, 70);
   assert.equal(findBalancedTeams(captainB, captainA, others).withinRange, 70);
@@ -239,8 +239,9 @@ test("accepts the two inclusive probability bounds and falls back to the closest
   ]);
   const { plans, withinRange } = findBalancedTeams(strong, regular, pool);
   assert.equal(withinRange, 0);
-  assert.equal(plans.length, 1);
+  assert.equal(plans.length, 3);
   assert.deepEqual(plans[0].teamA.map((player) => player.accountId), [1, 3, 4, 5, 6]);
+  assert.ok(plans[0].ratingGap <= plans[1].ratingGap && plans[1].ratingGap <= plans[2].ratingGap);
   assert.ok(Math.abs(plans[0].winChanceA - expectedWinChance(676)) < 1e-10);
 });
 
