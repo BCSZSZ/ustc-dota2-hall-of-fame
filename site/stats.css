@@ -1400,3 +1400,34 @@
   color: #fff;
   background: var(--red-700);
 }
+
+a.match-toggle {
+  text-decoration: none;
+}
+
+a.match-toggle:hover {
+  background: var(--gold-100);
+}
+
+a.player-card-head {
+  text-decoration: none;
+}
+
+.player-card:has(a.player-card-head:hover) {
+  border-color: var(--gold-500);
+}
+
+.detail-page {
+  display: grid;
+  gap: 18px;
+}
+
+.match-page-head {
+  display: grid;
+  gap: 12px;
+}
+
+.detail-page .match-detail {
+  padding: 0;
+  border-top: 0;
+}
