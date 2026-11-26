@@ -1995,4 +1995,12 @@ a.player-card-head {
 
 .stat-card .diff-down {
   color: #a3261b;
+/* Marks a score that comes from the local IMP estimate instead of STRATZ. */
+.est-mark {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-style: normal;
+  font-weight: 700;
+  vertical-align: super;
 }

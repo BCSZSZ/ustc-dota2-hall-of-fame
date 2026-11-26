@@ -6,7 +6,7 @@ import { matchMap } from "./map.js?v=2";
 import {
   LANE_TEXT, comebackTag, el, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
   item, itemIcon, loadData, minutes, mvpBadge, playerLink, scoreText, scoreTip, state, teamPanel,
-} from "./stats-core.js?v=8";
+} from "./stats-core.js?v=10";
 
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
 const RANK_NAMES = { 1: "先锋", 2: "卫士", 3: "中军", 4: "统帅", 5: "传奇", 6: "万古流芳", 7: "超凡入圣", 8: "冠绝一世" };
@@ -135,7 +135,7 @@ function scoreboard(match, radiant) {
       el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(match.smvp, match.mvpBasis) : null),
       el("td", {}, heroLabel(player.hero)),
       el("td", { class: "num", title: scoreTip(player) }, gradeBadge(player), el("b", {}, scoreText(player.score)),
-        Number.isFinite(player.imp) ? el("small", { class: "imp-sub" }, `IMP ${impText(player.imp)}`) : null),
+        Number.isFinite(player.imp) ? el("small", { class: "imp-sub" }, `${player.impEstimated ? "估算 " : ""}IMP ${impText(player.imp)}`) : null),
       el("td", { class: "num" }, player.pos ? `${player.pos} 号位` : "—"),
       el("td", { class: "num" }, `${player.k}/${player.d}/${player.a}`),
       el("td", { class: "num" }, `${player.lh}/${player.dn}`),
@@ -190,7 +190,8 @@ function matchDetail(match) {
       el("a", { href: `https://www.opendota.com/matches/${match.match_id}`, target: "_blank", rel: "noopener" }, "在 OpenDota 查看"), " · ",
       el("a", { href: `https://stratz.com/matches/${match.match_id}`, target: "_blank", rel: "noopener" }, "在 STRATZ 查看"),
       match.rank ? ` · STRATZ 段位估计 ${RANK_NAMES[Math.floor(match.rank / 10)] || ""} ${match.rank % 10 || ""}`.trimEnd() : "",
-      match.players.some((player) => Number.isFinite(player.imp)) ? null : " · STRATZ 还没给这场评分，MVP 暂按六项能力评选"),
+      match.impSource === "est" ? " · STRATZ 没给这场 IMP（有凯的比赛 STRATZ 一律不评），IMP 和评分为本站模型估算"
+        : match.impSource ? null : " · 这场还没有 IMP，暂无评分和 MVP"),
     parseNote,
     el("h3", {}, "BP 顺序"),
     el("ol", { class: "draft-strip" }, match.picks_bans.map(([, isPick, team, heroId]) =>

@@ -5,7 +5,7 @@ import {
   LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, kda,
   loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, scoreTip, section,
   smoothed, sortableTable, state, statCard, chipsOf, visibleMatches,
-} from "./stats-core.js?v=8";
+} from "./stats-core.js?v=10";
 
 function playerDetail(games, matches) {
   const everyone = matches.flatMap((match) => match.players);

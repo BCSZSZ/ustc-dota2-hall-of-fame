@@ -1,5 +1,6 @@
 // Data, scoring and components shared by the stats list, match and player pages.
 
+import { estimateImp } from "./imp-model.js?v=2";
 import { loadPlayerAliases } from "./shared-mmr.js?v=3";
 
 const DAY_SECONDS = 86400;
@@ -138,7 +139,6 @@ function visibleMatches() {
 }
 
 function playerRow(match, player) {
-  const titles = player.titles || [];
   return el("div", { class: `player-row${isMvp(match, player) ? " is-mvp" : ""}` },
     el("span", { class: "pr-hero" }, heroIcon(player.hero),
       player.pos ? el("i", { class: "pr-pos", title: `${player.pos} 号位` }, player.pos) : null),
@@ -147,7 +147,8 @@ function playerRow(match, player) {
       el("span", { class: "pr-sub" }, hero(player.hero).name)),
     el("span", { class: "pr-kda", title: "击杀 / 死亡 / 助攻" },
       el("b", { class: "k" }, player.k ?? 0), "/", el("b", { class: "d" }, player.d ?? 0), "/", el("b", { class: "a" }, player.a ?? 0)),
-    el("span", { class: "pr-score", title: scoreTip(player) }, gradeBadge(player), el("b", {}, scoreText(player.score))),
+    el("span", { class: "pr-score", title: scoreTip(player) }, gradeBadge(player), el("b", {}, scoreText(player.score)),
+      player.impEstimated ? el("i", { class: "est-mark" }, "估") : null),
     el("span", { class: "pr-nw", title: `净值 ${(player.nw ?? 0).toLocaleString()} · GPM ${player.gpm ?? "—"}` },
       player.nw ? `${(player.nw / 1000).toFixed(1)}k` : "—"),
     el("span", { class: "pr-bottom" },
@@ -187,7 +188,7 @@ const DIMENSIONS = [
 ];
 // IMP from STRATZ compares a player with others on the same hero and position in the match's
 // rank bracket; 0 is an average game. The score, grades and MVP come from it; the six dimensions
-// above only describe playing style.
+// above only describe playing style. Matches STRATZ never scores use imp-model.js's estimate.
 //
 // The 0-100 score starts from a split normal CDF: 100·Φ(IMP / 20) at or above 0 and 100·Φ(IMP / 30)
 // below. League IMP is close to normal around STRATZ's 0 (130 players: mean −3.9, SD 19.3, skew 0.07;
@@ -218,7 +219,8 @@ const TITLE_LIMIT = 4;
 
 const isSupport = (player) => player.pos === 4 || player.pos === 5;
 const wardsOf = (player) => (Number.isFinite(player.obs) ? player.obs + (player.sen ?? 0) : null);
-const gradeOf = (score) => (Number.isFinite(score) ? GRADES.find(([, floor]) => score >= floor)[0] : null);
+// Graded on the score as displayed, so a shown 92 is always S.
+const gradeOf = (score) => (Number.isFinite(score) ? GRADES.find(([, floor]) => Math.round(score) >= floor)[0] : null);
 
 function meanOf(values) {
   const list = values.filter(Number.isFinite);
@@ -245,7 +247,6 @@ function computeScores() {
     const bm = player.bm;
     if (!bm) {
       player.dims = null;
-      player.base = null;
       continue;
     }
     const support = isSupport(player);
@@ -257,26 +258,17 @@ function computeScores() {
       surv: bm.death,
       kill: bm.kpm,
     };
-    player.base = meanOf(Object.values(player.dims));
   }
-  // Matches STRATZ has not scored fall back to the old pick: the winner furthest above the
-  // league average of the same position on the six dimensions.
-  const scored = players.filter((player) => Number.isFinite(player.base));
-  const overall = meanOf(scored.map((player) => player.base));
-  const roleMean = new Map([1, 2, 3, 4, 5].map((pos) => [pos, meanOf(scored.filter((player) => player.pos === pos).map((player) => player.base))]));
   for (const player of players) {
     player.score = scoreOfImp(player.imp);
-    player.relative = Number.isFinite(player.base) ? player.base - (roleMean.get(player.pos) ?? overall) : null;
     player.grade = gradeOf(player.score);
   }
   for (const match of state.matches) {
-    const byImp = match.players.some((player) => Number.isFinite(player.imp));
-    const value = byImp ? (player) => player.imp : (player) => player.relative;
-    const winners = match.players.filter((player) => won(match, player) && Number.isFinite(value(player)));
-    const best = winners.sort((a, b) => value(b) - value(a))[0];
+    const winners = match.players.filter((player) => won(match, player) && Number.isFinite(player.imp));
+    const best = winners.sort((a, b) => b.imp - a.imp)[0];
     match.mvp = best ? best.slot : null;
-    match.smvp = Boolean(best && byImp && best.imp >= SMVP_IMP);
-    match.mvpBasis = best ? (byImp ? "imp" : "score") : null;
+    match.smvp = Boolean(best && best.imp >= SMVP_IMP);
+    match.mvpBasis = best ? match.impSource : null;
     // The lowest win chance the winners had, from STRATZ's per-minute Radiant win chance.
     const chances = match.win?.length ? match.win.map((chance) => (match.radiant_win ? chance : 100 - chance)) : null;
     match.comeback = chances && Math.min(...chances) <= COMEBACK_CHANCE ? Math.min(...chances) : null;
@@ -288,7 +280,9 @@ function computeScores() {
 const isMvp = (match, player) => match.mvp === player.slot;
 const scoreText = (value) => (Number.isFinite(value) ? String(Math.round(value)) : "—");
 const impText = (value) => (Number.isFinite(value) ? `${value > 0 ? "+" : ""}${Math.round(value)}` : "—");
-const scoreTip = (player) => (Number.isFinite(player.imp) ? `IMP ${impText(player.imp)} · ${IMP_TIP}` : "STRATZ 还没给这场打分");
+const scoreTip = (player) => (!Number.isFinite(player.imp) ? "这场还没有 IMP"
+  : player.impEstimated ? `估算 IMP ${impText(player.imp)}（STRATZ 没给这场 IMP，按本站模型估算） · ${IMP_TIP}`
+    : `IMP ${impText(player.imp)} · ${IMP_TIP}`);
 const gradeBadge = (player) => (player.grade
   ? el("span", { class: `grade grade-${player.grade}`, title: `评级 ${player.grade}：S ≥ 92（IMP ≥ +25.6），A ≥ 80（+13.5），B ≥ 60（0），C ≥ 40（−15.7），其余 D` }, player.grade)
   : null);
@@ -311,7 +305,7 @@ const topOf = (match, player, value, floor = 0) => (value(player) ?? -Infinity) 
 // qualifier by `pick`, or the next one if that player already holds four titles.
 const TITLES = [
   { name: "SMVP", tip: "胜方评分最高，且达到 95（IMP +30）", test: (m, p) => isMvp(m, p) && m.smvp, pick: () => 0 },
-  { name: "MVP", tip: "胜方评分最高的人（STRATZ 未打分的比赛改看六项能力高出同号位平均最多的人）", test: (m, p) => isMvp(m, p) && !m.smvp, pick: () => 0 },
+  { name: "MVP", tip: "胜方评分最高的人", test: (m, p) => isMvp(m, p) && !m.smvp, pick: () => 0 },
   { name: "带队翻盘", tip: "翻盘局里胜方评分最高的人（胜方胜率曾跌到 20% 以下）", test: (m, p) => m.comeback !== null && m.comeback !== undefined &&
     won(m, p) && Number.isFinite(p.imp) && rankIn(teamOf(m, p).filter((o) => Number.isFinite(o.imp)), p, (o) => o.imp) === 1, pick: (m, p) => p.imp },
   { name: "暴走", tip: "一波收下 4 个及以上人头", test: (m, p) => p.multi >= 4, pick: (m, p) => p.multi * 100 + p.k },
@@ -361,8 +355,8 @@ const TITLE_KIND = {
 };
 // What decided a match's MVP: STRATZ IMP, or the six-dimension score until STRATZ scores the match.
 const MVP_BASIS = {
-  imp: { label: "IMP", tip: "本场按 STRATZ IMP 换算的评分评选" },
-  score: { label: "六项", tip: "STRATZ 还没给本场打分，暂按六项能力评选；STRATZ 打分后改按 IMP，MVP 可能换人" },
+  stratz: { label: "IMP", tip: "本场按 STRATZ IMP 换算的评分评选" },
+  est: { label: "估算", tip: "STRATZ 没给本场 IMP（比如有凯的比赛），按本站拟合的 IMP 估算模型评选；STRATZ 补上后改用真实 IMP，MVP 可能换人" },
 };
 const titleChip = (name, count = 0, basis = null) => el("span", {
   class: `title-chip ${TITLE_KIND[name] || "stat"}${name.endsWith("MVP") ? " mvp" : ""}`,
@@ -518,9 +512,9 @@ async function loadData() {
     if (!response.ok) throw new Error(`${path} HTTP ${response.status}`);
     return response.json();
   });
-  const [summaries, constants, league, aliases, stratz] = await Promise.all([
+  const [summaries, constants, league, aliases, stratz, impModel] = await Promise.all([
     read("./data/matches.json"), read("./data/constants.json"), read("./data/league.json"), loadPlayerAliases(),
-    read("./data/stratz.json").catch(() => ({})),
+    read("./data/stratz.json").catch(() => ({})), read("./data/imp-model.json").catch(() => null),
   ]);
   state.heroes = constants.heroes || {};
   state.items = constants.items || {};
@@ -544,7 +538,13 @@ async function loadData() {
     const extra = stratz.matches?.[match.match_id];
     match.rank = extra?.rank ?? null;
     match.win = extra?.win || null;
-    for (const player of match.players) player.imp = extra?.imp?.[player.slot] ?? null;
+    // STRATZ never scores some matches (any with Kez); those use the local estimate from fit_imp.py.
+    const estimate = extra?.imp ? null : estimateImp(impModel, match);
+    match.impSource = extra?.imp ? "stratz" : estimate ? "est" : null;
+    for (const player of match.players) {
+      player.imp = extra?.imp?.[player.slot] ?? estimate?.[player.slot] ?? null;
+      player.impEstimated = match.impSource === "est";
+    }
   }
   computeScores();
   if (state.matches.length) {
