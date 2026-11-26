@@ -147,15 +147,14 @@ function playerRow(match, player) {
       el("span", { class: "pr-sub" }, hero(player.hero).name)),
     el("span", { class: "pr-kda", title: "击杀 / 死亡 / 助攻" },
       el("b", { class: "k" }, player.k ?? 0), "/", el("b", { class: "d" }, player.d ?? 0), "/", el("b", { class: "a" }, player.a ?? 0)),
-    el("span", { class: "pr-score", title: scoreTip(player) }, gradeBadge(player), el("b", {}, scoreText(player.score)),
-      player.impEstimated ? el("i", { class: "est-mark" }, "估") : null),
+    el("span", { class: "pr-score", title: scoreTip(player) }, gradeBadge(player), el("b", {}, scoreText(player.score))),
     el("span", { class: "pr-nw", title: `净值 ${(player.nw ?? 0).toLocaleString()} · GPM ${player.gpm ?? "—"}` },
       player.nw ? `${(player.nw / 1000).toFixed(1)}k` : "—"),
     el("span", { class: "pr-bottom" },
       el("span", { class: "pr-items" },
         Array.from({ length: 6 }, (_, slot) => (player.items[slot] ? itemIcon(player.items[slot]) : el("span", { class: "item-img empty" }))),
         el("span", { class: "pr-neutral" }, player.neutral ? itemIcon(player.neutral) : el("span", { class: "item-img empty" }))),
-      el("span", { class: "pr-titles" }, chipsOf(match, player))));
+      el("span", { class: "pr-titles" }, (player.titles || []).map((name) => titleChip(name)))));
 }
 
 function teamPanel(match, radiant) {
@@ -268,7 +267,6 @@ function computeScores() {
     const best = winners.sort((a, b) => b.imp - a.imp)[0];
     match.mvp = best ? best.slot : null;
     match.smvp = Boolean(best && best.imp >= SMVP_IMP);
-    match.mvpBasis = best ? match.impSource : null;
     // The lowest win chance the winners had, from STRATZ's per-minute Radiant win chance.
     const chances = match.win?.length ? match.win.map((chance) => (match.radiant_win ? chance : 100 - chance)) : null;
     match.comeback = chances && Math.min(...chances) <= COMEBACK_CHANCE ? Math.min(...chances) : null;
@@ -290,6 +288,10 @@ const gradeBadge = (player) => (player.grade
 const COMEBACK_CHANCE = 20;
 const comebackTag = (match) => (match.comeback === null || match.comeback === undefined ? null
   : el("span", { class: "match-tag comeback", title: `胜方胜率曾跌到 ${match.comeback}%（STRATZ 每分钟胜率预测，≤ ${COMEBACK_CHANCE}% 算翻盘）` }, "翻盘"));
+// Shown beside the duration when this match's IMP comes from the local model instead of STRATZ.
+const estimateTag = (match) => (match.impSource === "est"
+  ? el("span", { class: "match-tag estimate", title: "STRATZ 没给这场 IMP（有凯的比赛一律不评），本场 IMP、评分、评级和 MVP 由本站模型估算；STRATZ 补上后改用真实 IMP" }, "估算")
+  : null);
 
 // ---------- 本局称号 ----------
 
@@ -353,17 +355,10 @@ const TITLE_KIND = {
   拆: "stat", 壕: "stat", 就是干: "stat", 奶: "stat", 肉: "stat", 控: "stat", 眼: "stat", 一血: "stat",
   钢丝C: "roast", 刷了送: "roast", 我的: "roast", 打心底里佩服: "roast", 躺: "roast", 僵: "roast", 浪: "roast",
 };
-// What decided a match's MVP: STRATZ IMP, or the six-dimension score until STRATZ scores the match.
-const MVP_BASIS = {
-  stratz: { label: "IMP", tip: "本场按 STRATZ IMP 换算的评分评选" },
-  est: { label: "估算", tip: "STRATZ 没给本场 IMP（比如有凯的比赛），按本站拟合的 IMP 估算模型评选；STRATZ 补上后改用真实 IMP，MVP 可能换人" },
-};
-const titleChip = (name, count = 0, basis = null) => el("span", {
+const titleChip = (name, count = 0) => el("span", {
   class: `title-chip ${TITLE_KIND[name] || "stat"}${name.endsWith("MVP") ? " mvp" : ""}`,
-  title: `【${name}】${TITLE_TIPS[name]}${basis ? `。${MVP_BASIS[basis].tip}` : ""}`,
-}, count ? `${name} ×${count}` : name, basis ? el("small", { class: "mvp-basis" }, MVP_BASIS[basis].label) : null);
-const chipsOf = (match, player) =>
-  (player.titles || []).map((name) => titleChip(name, 0, name.endsWith("MVP") ? match.mvpBasis : null));
+  title: `【${name}】${TITLE_TIPS[name]}`,
+}, count ? `${name} ×${count}` : name);
 
 function averageDims(players) {
   return Object.fromEntries(DIMENSIONS.map(({ key }) => [key, meanOf(players.map((player) => player.dims?.[key]))]));
@@ -390,9 +385,7 @@ function radar(values, { size = 132, compare = null } = {}) {
   return figure;
 }
 
-const mvpBadge = (smvp = false, basis = null) => el("span", {
-  class: "mvp", title: `${TITLE_TIPS[smvp ? "SMVP" : "MVP"]}${basis ? `。${MVP_BASIS[basis].tip}` : ""}`,
-}, smvp ? "SMVP" : "MVP", basis ? el("small", { class: "mvp-basis" }, MVP_BASIS[basis].label) : null);
+const mvpBadge = (smvp = false) => el("span", { class: "mvp", title: TITLE_TIPS[smvp ? "SMVP" : "MVP"] }, smvp ? "SMVP" : "MVP");
 
 // ---------- 选手 ----------
 
@@ -595,7 +588,7 @@ export {
   DAY_SECONDS, MIN_RATE_GAMES, DIMENSIONS, LANE_ROLES, LANE_TEXT, IMP_TIP, TITLES,
   state, el, hero, item, playerName, isRadiant, won, minutes, picture, heroIcon, itemIcon, heroLabel, itemLabel,
   matchHref, playerHref, playerLink, formatDate, formatDuration, dateInput, record, rate, smoothed, percent, average,
-  kda, sortableTable, section, statCard, visibleMatches, playerRow, teamPanel, meanOf, isMvp, scoreText, scoreTip, impText, gradeBadge, comebackTag,
-  gradeOf, titleChip, chipsOf, averageDims, radar, mvpBadge, winText, laneSummary, averageOf, rounded, positionChart,
+  kda, sortableTable, section, statCard, visibleMatches, playerRow, teamPanel, meanOf, isMvp, scoreText, scoreTip, impText, gradeBadge, comebackTag, estimateTag,
+  gradeOf, titleChip, averageDims, radar, mvpBadge, winText, laneSummary, averageOf, rounded, positionChart,
   dimensionBars, gamesOf, playerSummary, loadData, rangeParams, bindRange,
 };

@@ -410,6 +410,12 @@
   cursor: help;
 }
 
+.match-tag.estimate {
+  color: #5b4a2a;
+  border: 1px dashed #b89a5a;
+  background: #fbf3de;
+}
+
 .match-tag.comeback {
   color: #fff8e0;
   background: linear-gradient(135deg, #1f7a4a, #e19a22);
@@ -1713,17 +1719,6 @@ a.player-card-head {
   background: #fbf7ee;
 }
 
-/* Shows whether a match's MVP came from STRATZ IMP or the fallback score. */
-.mvp-basis {
-  margin-left: 5px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
 /* All titles a player earned in the selected range, across the full card width. */
 .pc-title-strip {
   display: flex;
@@ -1995,16 +1990,6 @@ a.player-card-head {
 
 .stat-card .diff-down {
   color: #a3261b;
-}
-
-/* Marks a score that comes from the local IMP estimate instead of STRATZ. */
-.est-mark {
-  margin-left: 2px;
-  color: var(--muted);
-  font-size: 0.65rem;
-  font-style: normal;
-  font-weight: 700;
-  vertical-align: super;
 }
 
 /* ---------- 号位表现（详细） ---------- */

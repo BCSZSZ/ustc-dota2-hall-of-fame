@@ -4,8 +4,8 @@ import { laneSection } from "./positions.js?v=3";
 import {
   LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, item, kda,
   loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, scoreTip, section,
-  smoothed, sortableTable, state, statCard, chipsOf, visibleMatches,
-} from "./stats-core.js?v=10";
+  smoothed, sortableTable, state, statCard, titleChip, visibleMatches,
+} from "./stats-core.js?v=11";
 
 function playerDetail(games, matches) {
   const everyone = matches.flatMap((match) => match.players);
@@ -45,7 +45,7 @@ function playerDetail(games, matches) {
         el("td", {}, formatDate(game.match.start_time)),
         el("td", {}, heroLabel(game.player.hero)),
         el("td", { class: "num", title: scoreTip(game.player) }, gradeBadge(game.player), scoreText(game.player.score)),
-        el("td", {}, chipsOf(game.match, game.player)),
+        el("td", {}, (game.player.titles || []).map((name) => titleChip(name))),
         el("td", { class: "num" }, game.player.pos ? `${game.player.pos} 号位` : "—"),
         el("td", { class: "num" }, `${game.player.k}/${game.player.d}/${game.player.a}`),
         el("td", { class: "num" }, rounded(game.player.gold10 ?? null)),

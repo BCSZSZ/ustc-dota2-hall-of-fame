@@ -4,9 +4,9 @@ import { deathReview } from "./deaths.js?v=2";
 import { laneReview } from "./lanes.js?v=8";
 import { matchMap } from "./map.js?v=2";
 import {
-  LANE_TEXT, comebackTag, el, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
+  LANE_TEXT, comebackTag, el, estimateTag, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
   item, itemIcon, loadData, minutes, mvpBadge, playerLink, scoreText, scoreTip, state, teamPanel,
-} from "./stats-core.js?v=10";
+} from "./stats-core.js?v=11";
 
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
 const RANK_NAMES = { 1: "先锋", 2: "卫士", 3: "中军", 4: "统帅", 5: "传奇", 6: "万古流芳", 7: "超凡入圣", 8: "冠绝一世" };
@@ -132,7 +132,7 @@ function scoreboard(match, radiant) {
   const teamWon = radiant === match.radiant_win;
   const rows = players.map((player) =>
     el("tr", {},
-      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(match.smvp, match.mvpBasis) : null),
+      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(match.smvp) : null),
       el("td", {}, heroLabel(player.hero)),
       el("td", { class: "num", title: scoreTip(player) }, gradeBadge(player), el("b", {}, scoreText(player.score)),
         Number.isFinite(player.imp) ? el("small", { class: "imp-sub" }, `${player.impEstimated ? "估算 " : ""}IMP ${impText(player.imp)}`) : null),
@@ -215,7 +215,7 @@ function matchDetail(match) {
 function matchHeader(match) {
   return el("div", { class: "match-page-head" },
     el("div", { class: "match-head" },
-      el("span", { class: "match-when" }, formatDate(match.start_time), el("small", {}, `时长 ${formatDuration(match.duration)}`), comebackTag(match)),
+      el("span", { class: "match-when" }, formatDate(match.start_time), el("small", {}, `时长 ${formatDuration(match.duration)}`), estimateTag(match), comebackTag(match)),
       el("span", { class: "match-score" },
         el("b", { class: match.radiant_win ? "radiant won" : "radiant" }, "天辉"),
         `${match.radiant_score} : ${match.dire_score}`,
