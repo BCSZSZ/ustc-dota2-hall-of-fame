@@ -12,7 +12,7 @@ import httpx
 from PIL import Image
 
 # Bump when summaries or detail files gain fields; older matches are refetched once.
-SUMMARY_VERSION = 7
+SUMMARY_VERSION = 8
 IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
 HERO_IMAGE_SIZE = (128, 72)
 ITEM_IMAGE_SIZE = (66, 48)
@@ -332,9 +332,29 @@ def lane_heat(raw: dict[str, Any]) -> dict[str, Any]:
     return {"bin": HEAT_BIN, "phase_seconds": HEAT_PHASE_SECONDS, "duration": 600, "players": players}
 
 
+def deaths(raw: dict[str, Any]) -> list[list[Any]]:
+    """[victim slot, second, killer unit name, gold lost, seconds dead] from OpenDota's per-player death log."""
+    rows = [
+        [player.get("player_slot"), entry.get("time"), entry.get("key"), entry.get("gold_lost"), entry.get("time_dead")]
+        for player in raw.get("players") or []
+        for entry in player.get("deaths_log") or []
+    ]
+    return sorted(rows, key=lambda row: (row[1] or 0, row[0]))
+
+
+def buybacks(raw: dict[str, Any]) -> list[list[Any]]:
+    return sorted(
+        [player.get("player_slot"), entry.get("time")]
+        for player in raw.get("players") or []
+        for entry in player.get("buyback_log") or []
+    )
+
+
 def detail(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
     return {
         "match_id": raw["match_id"],
+        "deaths": deaths(raw),
+        "buybacks": buybacks(raw),
         "wards": wards(raw, constants),
         "lane_heat": lane_heat(raw),
         "gold_adv": raw.get("radiant_gold_adv") or [],

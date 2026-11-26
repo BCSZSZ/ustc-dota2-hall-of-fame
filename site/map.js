@@ -2,7 +2,7 @@
 // Positions use OpenDota map cells (64-192 on both axes, y pointing north).
 
 const MAP_IMAGE = "./img/map/detailed_740.webp";
-const SIZE = 640;
+export const SIZE = 640;
 const WARD_SECONDS = [360, 420];
 const WARD_NAMES = ["假眼", "真眼"];
 const PALETTE = [[0, "rgba(0,0,255,0)"], [0.25, "#2b6cff"], [0.5, "#00e0ff"], [0.65, "#3dff3d"], [0.82, "#ffe600"], [1, "#ff2200"]];
@@ -11,11 +11,11 @@ const heatFiles = new Map();
 let mapImage = null;
 let palette = null;
 
-const px = (x) => ((x - 64) / 128) * SIZE;
-const py = (y) => (1 - (y - 64) / 128) * SIZE;
-const clock = (seconds) => `${seconds < 0 ? "-" : ""}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.abs(seconds) % 60).padStart(2, "0")}`;
+export const px = (x) => ((x - 64) / 128) * SIZE;
+export const py = (y) => (1 - (y - 64) / 128) * SIZE;
+export const clock = (seconds) => `${seconds < 0 ? "-" : ""}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.abs(seconds) % 60).padStart(2, "0")}`;
 
-function loadImage() {
+export function loadImage() {
   if (!mapImage) {
     mapImage = new Promise((resolve) => {
       const image = new Image();

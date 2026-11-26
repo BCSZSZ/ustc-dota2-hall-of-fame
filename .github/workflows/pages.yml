@@ -10,6 +10,7 @@ on:
       - "collector.py"
       - "match_details.py"
       - "replays.py"
+      - "replay_events.py"
       - "hero_names_zh.json"
       - "mmr-api/**"
       - "requirements.txt"
@@ -81,21 +82,24 @@ jobs:
             python collector.py --league-id 19224 --output site/data/league.json --refresh-recent 5
           fi
 
-      - name: Turn archived replays into whole-game heatmaps
-        # A failed parse leaves the match on the laning-phase heatmap; the next run tries again.
+      - name: Derive heatmaps and match events from archived replays
+        # A failed parse leaves the match on OpenDota-only data; the next run tries again.
         continue-on-error: true
         run: |
           if [ "$(python replays.py todo)" = "0" ]; then
-            echo "Every archived replay already has a heatmap."
-            exit 0
+            echo "Every archived replay is derived with the current version."
+          else
+            docker run -d --name replay-parser -p 5600:5600 \
+              odota/parser@sha256:e615dd38232b8ac6a47516787f7cdd6e8db10e92bd7354ea72c3b8ca7b1c987c
+            for attempt in $(seq 1 60); do
+              curl -fsS http://127.0.0.1:5600/healthz && break
+              sleep 2
+            done
+            python replays.py parse
           fi
-          docker run -d --name replay-parser -p 5600:5600 \
-            odota/parser@sha256:e615dd38232b8ac6a47516787f7cdd6e8db10e92bd7354ea72c3b8ca7b1c987c
-          for attempt in $(seq 1 60); do
-            curl -fsS http://127.0.0.1:5600/healthz && break
-            sleep 2
-          done
-          python replays.py parse
+
+      - name: Rebuild the cross-match death index
+        run: python replays.py index
 
       - name: Persist refreshed data
         run: |

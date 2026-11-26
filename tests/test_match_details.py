@@ -228,3 +228,14 @@ def test_summary_keeps_title_inputs() -> None:
     assert summary["max_lead"] == {"radiant": 4200, "dire": 1500}
     assert (player["multi"], player["streak"], player["taken"], player["fb"], player["aegis_stolen"]) == (4, 10, 1000, 1, 1)
     assert (other["multi"], other["streak"], other["taken"], other["fb"], other["aegis_stolen"]) == (0, 0, None, 0, 0)
+
+
+def test_detail_keeps_opendota_death_and_buyback_logs() -> None:
+    from match_details import detail
+
+    raw = raw_match(7, parsed=True)
+    raw["players"][0]["deaths_log"] = [{"time": 300, "key": "npc_dota_hero_axe", "gold_lost": 120, "time_dead": 18}]
+    raw["players"][5]["buyback_log"] = [{"time": 1500, "slot": 5}]
+    result = detail(raw, build_constants(HEROES, ITEMS))
+    assert result["deaths"] == [[0, 300, "npc_dota_hero_axe", 120, 18]]
+    assert result["buybacks"] == [[128, 1500]]

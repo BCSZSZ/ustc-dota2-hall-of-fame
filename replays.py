@@ -16,6 +16,7 @@ from typing import Any, Callable, Iterable, Iterator
 import httpx
 
 from match_details import GIVE_UP_AFTER, HEAT_BIN, HEAT_PHASE_SECONDS, Client, _iso, _read, _write, schedule_retry
+from replay_events import REPLAY_VERSION, build_death_index, death_events
 
 REPO = os.getenv("GITHUB_REPOSITORY") or "BCSZSZ/ustc-dota2-hall-of-fame"
 # Local working copies; the archive itself is the Release assets listed in site/data/replays.json.
@@ -24,6 +25,8 @@ MANIFEST = "replays.json"
 # Valve serves .dem.bz2 URLs, but some clusters (e.g. the Perfect World ones) send zstd data under that name.
 FORMATS = {b"BZh": ".dem.bz2", b"\x28\xb5\x2f\xfd": ".dem.zst"}
 DECOMPRESS = {".dem.bz2": ["bzip2", "-dc"], ".dem.zst": ["zstd", "-dc"]}
+# Parser events kept in memory while deriving a match; everything else is dropped as it streams in.
+KEPT_EVENTS = {"interval", "death_tick", "DOTA_COMBATLOG_DEATH", "DOTA_COMBATLOG_DAMAGE"}
 
 Uploader = Callable[[str, Path], None]
 Job = tuple[int, str | None, str]
@@ -259,48 +262,63 @@ def _parser_entries(replay: Path, parser_url: str) -> Iterator[dict[str, Any]]:
         raise OSError(f"{DECOMPRESS[suffix][0]} exited with {process.returncode}")
 
 
-def heat_todo(data_dir: Path) -> list[int]:
-    """Counted matches whose replay is archived but which have no whole-game heatmap yet."""
+def parse_todo(data_dir: Path, redo: bool = False) -> list[int]:
+    """Counted, archived matches whose heatmap or replay events are missing or from an older REPLAY_VERSION."""
     archived = read_manifest(data_dir)
-    return [
-        match["match_id"]
-        for match in _read(data_dir / "matches.json").get("matches", [])
-        if str(match["match_id"]) in archived and not (data_dir / "heat" / f"{match['match_id']}.json").exists()
-    ]
+    todo = []
+    for match in _read(data_dir / "matches.json").get("matches", []):
+        match_id = match["match_id"]
+        if str(match_id) not in archived:
+            continue
+        current = (data_dir / "heat" / f"{match_id}.json").exists() and (
+            _read(data_dir / "replay" / f"{match_id}.json").get("v") == REPLAY_VERSION
+        )
+        if redo or not current:
+            todo.append(match_id)
+    return todo
 
 
-def parse_heatmaps(replay_dir: Path, data_dir: Path, parser_url: str, repo: str = REPO) -> int:
+def parse_replays(replay_dir: Path, data_dir: Path, parser_url: str, repo: str = REPO, redo: bool = False) -> int:
+    """Write heat/{id}.json and replay/{id}.json for each match in parse_todo."""
     archived = read_manifest(data_dir)
+    hero_keys = {hero_id: hero.get("key") for hero_id, hero in _read(data_dir / "constants.json").get("heroes", {}).items()}
     done = 0
     with httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0), follow_redirects=True) as http:
-        for match_id in heat_todo(data_dir):
+        for match_id in parse_todo(data_dir, redo):
             try:
                 replay = fetch_archived(http, archived[str(match_id)], replay_dir, repo)
-                result = heatmap(_parser_entries(replay, parser_url))
+                entries = [entry for entry in _parser_entries(replay, parser_url) if entry.get("type") in KEPT_EVENTS]
             except (httpx.HTTPError, OSError, ValueError) as error:
                 print(f"::warning::{match_id}: replay parse failed: {error}", file=sys.stderr)
                 continue
-            if not result["players"]:
-                print(f"{match_id}: parser returned no hero positions", file=sys.stderr)
+            heat = heatmap(entries)
+            if not heat["players"]:
+                print(f"::warning::{match_id}: parser returned no hero positions", file=sys.stderr)
                 continue
-            _write(data_dir / "heat" / f"{match_id}.json", {"match_id": match_id, **result})
+            _write(data_dir / "heat" / f"{match_id}.json", {"match_id": match_id, **heat})
+            _write(data_dir / "replay" / f"{match_id}.json",
+                   {"v": REPLAY_VERSION, "match_id": match_id, "deaths": death_events(entries, hero_keys)})
             done += 1
     return done
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Fetch archived replays and turn them into whole-game heatmaps")
-    parser.add_argument("command", choices=["todo", "parse", "fetch"])
+    parser = argparse.ArgumentParser(description="Fetch archived replays and derive heatmaps and match events")
+    parser.add_argument("command", choices=["todo", "parse", "fetch", "index"])
     parser.add_argument("--replay-dir", type=Path, default=REPLAY_DIR)
     parser.add_argument("--data-dir", type=Path, default=Path("site/data"))
     parser.add_argument("--parser-url", default="http://127.0.0.1:5600")
     parser.add_argument("--repo", default=REPO)
+    parser.add_argument("--redo", action="store_true", help="re-derive every archived match, not only stale ones")
     parser.add_argument("--match", type=int, action="append", help="fetch only these match IDs (default: all)")
     args = parser.parse_args(argv)
     if args.command == "todo":
-        print(len(heat_todo(args.data_dir)))
+        print(len(parse_todo(args.data_dir, args.redo)))
     elif args.command == "parse":
-        print(f"Heatmaps: {parse_heatmaps(args.replay_dir, args.data_dir, args.parser_url, args.repo)} replays parsed")
+        done = parse_replays(args.replay_dir, args.data_dir, args.parser_url, args.repo, args.redo)
+        print(f"Replays: {done} parsed; death index has {build_death_index(args.data_dir)} deaths")
+    elif args.command == "index":
+        print(f"Death index: {build_death_index(args.data_dir)} deaths")
     else:
         archived = read_manifest(args.data_dir)
         wanted = [str(match_id) for match_id in args.match] if args.match else list(archived)

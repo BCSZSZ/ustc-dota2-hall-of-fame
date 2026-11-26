@@ -8,7 +8,7 @@ import httpx
 
 from match_details import build_constants, detail
 from replays import (
-    archive_all, fetch_archived, heat_todo, heatmap, plan_downloads, read_manifest, record_archives, release_tag,
+    archive_all, fetch_archived, heatmap, parse_todo, plan_downloads, read_manifest, record_archives, release_tag,
 )
 from test_match_details import HEROES, ITEMS, START, FakeClient, raw_match
 
@@ -154,12 +154,18 @@ def test_detail_pairs_wards_with_their_end_and_names_the_dewarder() -> None:
     assert result["lane_heat"]["players"]["0"] == [0, 0, 63, 1, 0, 18, 18, 5]
 
 
-def test_heat_todo_lists_archived_replays_without_a_heatmap(tmp_path: Path) -> None:
+def test_parse_todo_lists_archived_matches_missing_or_stale_derivations(tmp_path: Path) -> None:
+    from replay_events import REPLAY_VERSION
+
     (tmp_path / "heat").mkdir()
-    (tmp_path / "matches.json").write_text(json.dumps({"matches": [{"match_id": 1}, {"match_id": 2}, {"match_id": 3}]}))
-    (tmp_path / "replays.json").write_text(json.dumps({"replays": {"1": {}, "2": {}}}))
-    (tmp_path / "heat" / "1.json").write_text("{}")
-    assert heat_todo(tmp_path) == [2]
+    (tmp_path / "replay").mkdir()
+    (tmp_path / "matches.json").write_text(json.dumps({"matches": [{"match_id": i} for i in (1, 2, 3, 4)]}))
+    (tmp_path / "replays.json").write_text(json.dumps({"replays": {"1": {}, "2": {}, "3": {}}}))
+    for match_id, version in ((1, REPLAY_VERSION), (2, REPLAY_VERSION - 1)):
+        (tmp_path / "heat" / f"{match_id}.json").write_text("{}")
+        (tmp_path / "replay" / f"{match_id}.json").write_text(json.dumps({"v": version}))
+    assert parse_todo(tmp_path) == [2, 3]
+    assert parse_todo(tmp_path, redo=True) == [1, 2, 3]
 
 
 # Real odota/parser interval events for match 9098014345 (fields the heatmap reads), captured with the
@@ -185,3 +191,80 @@ def test_heatmap_from_real_parser_output_matches_opendota() -> None:
     for slot, (hero_id, alive) in OPENDOTA_HERO_AND_ALIVE_SECONDS.items():
         assert heroes[slot] == hero_id
         assert sum(result["players"][str(slot)][3::4]) == alive
+
+
+COMBAT_FIXTURE = Path(__file__).with_name("fixtures") / "parser_combat_9098014345.jsonl.gz"
+
+
+def test_death_events_from_real_parser_output_match_opendota() -> None:
+    import gzip
+    from collections import Counter
+
+    from replay_events import death_events
+
+    entries = []
+    for fixture in (PARSER_FIXTURE, COMBAT_FIXTURE):
+        with gzip.open(fixture, "rt", encoding="utf-8") as lines:
+            entries += [json.loads(line) for line in lines]
+    keys = {"30": "npc_dota_hero_witch_doctor", "113": "npc_dota_hero_arc_warden", "102": "npc_dota_hero_abaddon",
+            "88": "npc_dota_hero_nyx_assassin", "8": "npc_dota_hero_juggernaut", "85": "npc_dota_hero_undying",
+            "44": "npc_dota_hero_phantom_assassin", "129": "npc_dota_hero_mars", "80": "npc_dota_hero_lone_druid",
+            "21": "npc_dota_hero_windrunner"}
+    events = death_events(entries, keys)
+
+    # OpenDota's deaths for this match: per-slot counts, and first blood at 1:50 on slot 2 by slot 129.
+    assert Counter(event["slot"] for event in events) == {
+        0: 11, 1: 9, 2: 11, 3: 10, 4: 5, 128: 10, 129: 6, 130: 8, 131: 7, 132: 5}
+    first = events[0]
+    assert (first["t"], first["slot"], first["killer"], first["attackers"]) == (110, 2, 129, [128, 129])
+    assert first["allies"] == 0 and first["region"] == "river"
+    assert len(first["snapshot"]) == 10 and first["snapshot"][2] == [first["x"], first["y"]]
+
+
+def test_regions_follow_the_river_and_bases() -> None:
+    from replay_events import region
+
+    assert region(75, 80, radiant=True) == "own_base"
+    assert region(178, 172, radiant=True) == "enemy_base"
+    assert region(120, 122.5, radiant=True) == "river"
+    assert region(110.9, 112.7, radiant=True) == "own_half"   # Radiant mid tier-1 tower
+    assert region(137.5, 129, radiant=True) == "enemy_half"   # Dire mid tier-1 tower
+    assert region(137.5, 129, radiant=False) == "own_half"
+
+
+def test_death_index_joins_opendota_log_with_replay_positions(tmp_path: Path) -> None:
+    from replay_events import INDEX_COLUMNS, REPLAY_VERSION, build_death_index
+
+    (tmp_path / "matches").mkdir()
+    (tmp_path / "replay").mkdir()
+    (tmp_path / "constants.json").write_text(json.dumps({"heroes": {"1": {"key": "npc_dota_hero_antimage"}}}))
+    players = [{"slot": 0, "hero": 2}, {"slot": 128, "hero": 1}]
+    (tmp_path / "matches.json").write_text(json.dumps({"matches": [
+        {"match_id": 7, "players": players}, {"match_id": 8, "players": players}]}))
+    detail = {
+        # The third entry is an extra log line (like a Meepo clone) with no death on the game's counter.
+        "deaths": [[0, 300, "npc_dota_hero_antimage", 150, 20], [0, 900, "npc_dota_goodguys_tower1_top", 300, 40],
+                   [0, 905, "npc_dota_hero_antimage", 0, 0]],
+        "buybacks": [[0, 910]],
+        "objectives": [{"time": 350, "type": "building_kill", "key": "npc_dota_goodguys_tower1_mid"},
+                       {"time": 950, "type": "CHAT_MESSAGE_ROSHAN_KILL", "team": 3}],
+    }
+    for match_id in (7, 8):
+        (tmp_path / "matches" / f"{match_id}.json").write_text(json.dumps(detail))
+    event = {"region": "enemy_half", "allies": 0, "enemies": 2, "attackers": [128], "snapshot": []}
+    (tmp_path / "replay" / "7.json").write_text(json.dumps({"v": REPLAY_VERSION, "deaths": [
+        {**event, "slot": 0, "t": 301, "x": 150.0, "y": 150.0, "killer": 128, "killer_unit": None},
+        {**event, "slot": 0, "t": 900, "x": 100.0, "y": 160.0, "killer": None, "killer_unit": "npc_dota_goodguys_tower1_top"},
+    ]}))
+
+    assert build_death_index(tmp_path) == 5
+    index = json.loads((tmp_path / "deaths.json").read_text())
+    assert index["columns"] == INDEX_COLUMNS
+    rows = [dict(zip(index["columns"], row)) for row in index["rows"]]
+    replayed, logged = [row for row in rows if row["match_id"] == 7], [row for row in rows if row["match_id"] == 8]
+    assert replayed[0] == {"match_id": 7, "slot": 0, "t": 301, "killer": 128, "gold_lost": 150, "time_dead": 20,
+                           "buyback": 0, "region": "enemy_half", "allies": 0, "enemies": 2, "attackers": 1,
+                           "x": 150.0, "y": 150.0, "lost": ["tower"]}
+    assert replayed[1]["killer"] == "npc_dota_goodguys_tower1_top"
+    assert replayed[1]["buyback"] == 1 and replayed[1]["lost"] == ["roshan"]
+    assert len(logged) == 3 and logged[0]["region"] is None and logged[0]["killer"] == 128

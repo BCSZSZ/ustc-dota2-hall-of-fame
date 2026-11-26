@@ -1,4 +1,5 @@
-import { matchMap } from "./map.js";
+import { deathProfile, deathReview } from "./deaths.js?v=1";
+import { matchMap } from "./map.js?v=2";
 import { loadPlayerAliases } from "./shared-mmr.js?v=2";
 
 const DAY_SECONDS = 86400;
@@ -290,7 +291,9 @@ function matchDetail(match) {
     el("h3", {}, "经济与经验"),
     timeline,
     el("h3", {}, "地图：英雄活动与视野"),
-    map);
+    map,
+    el("h3", {}, "死亡复盘"),
+    deathReview(match, { el, heroLabel, heroName: (id) => hero(id).name }));
 }
 
 function playerRow(match, player) {
@@ -750,6 +753,8 @@ function playerDetail(games, matches) {
           el("td", { class: "num" }, rounded(averageOf(row.list.map((game) => game.player), "gold10"))),
           el("td", { class: "num" }, rounded(averageOf(row.list.map((game) => game.player), "lh10"))),
           el("td", { class: "num" }, record(row.wins, row.list.length))))))) : null),
+    section("死亡", "每次死亡的时段、地点和身边情况，用来找可以改的习惯。",
+      deathProfile(games, matches, { el, statCard })),
     section("场均数据", null, el("div", { class: "stat-cards" },
       statCard("K/D/A", kda(mine).text, `联赛平均 ${kda(everyone).text}`),
       statCard("GPM", rounded(averageOf(mine, "gpm")), league("gpm")),
