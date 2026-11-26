@@ -3,15 +3,26 @@ const LEAGUE_URL = `${PAGES_ORIGIN}/ustc-dota2-hall-of-fame/data/league.json`;
 const MATCH_SLOTS = [0, 1, 2, 3, 4, 128, 129, 130, 131, 132];
 const MAX_BODY_BYTES = 16 * 1024;
 const METHODS = "GET, PUT, OPTIONS";
+const MAX_ALIAS_CHARS = 16;
+const HIDDEN_CHARS = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function validChange([accountId, rating]) {
+function validAccountId(accountId) {
   const id = Number(accountId);
-  return Number.isSafeInteger(id) && id > 0 && String(id) === accountId &&
+  return Number.isSafeInteger(id) && id > 0 && String(id) === accountId;
+}
+
+function validChange([accountId, rating]) {
+  return validAccountId(accountId) &&
     (rating === null || (Number.isInteger(rating) && rating >= 0 && rating <= 99999));
+}
+
+function validAlias([accountId, alias]) {
+  return validAccountId(accountId) && (alias === null || (typeof alias === "string" &&
+    alias !== "" && alias === alias.trim() && [...alias].length <= MAX_ALIAS_CHARS && !HIDDEN_CHARS.test(alias)));
 }
 
 async function readLimitedBody(request) {
@@ -62,12 +73,12 @@ async function leagueAccountIds() {
   return accounts;
 }
 
-function parseState({ revision, ratings, updated_at }) {
-  return { revision, ratings: JSON.parse(ratings), updatedAt: updated_at };
+function parseState({ revision, ratings, aliases, updated_at }) {
+  return { revision, ratings: JSON.parse(ratings), aliases: JSON.parse(aliases), updatedAt: updated_at };
 }
 
 async function readState(db) {
-  return parseState(await db.prepare("SELECT revision, ratings, updated_at FROM mmr_state WHERE id = 1").first());
+  return parseState(await db.prepare("SELECT revision, ratings, aliases, updated_at FROM mmr_state WHERE id = 1").first());
 }
 
 export default {
@@ -109,13 +120,16 @@ export default {
       } catch {
         return error(400, "Invalid JSON body");
       }
-      if (!isObject(body) || !Number.isSafeInteger(body.revision) || body.revision < 0 || !isObject(body.changes)) {
+      if (!isObject(body) || !Number.isSafeInteger(body.revision) || body.revision < 0 || !isObject(body.changes) ||
+          (body.aliases !== undefined && !isObject(body.aliases))) {
         return error(400, "Expected a revision and changes object");
       }
       const changes = Object.entries(body.changes);
+      const aliasChanges = Object.entries(body.aliases ?? {});
       if (!changes.every(validChange)) return error(400, "Invalid account ID or MMR");
+      if (!aliasChanges.every(validAlias)) return error(400, "Invalid account ID or player alias");
 
-      if (changes.length) {
+      if (changes.length || aliasChanges.length) {
         let accounts;
         try {
           accounts = await leagueAccountIds();
@@ -123,20 +137,28 @@ export default {
           console.error(err);
           return error(503, "League roster unavailable");
         }
-        if (changes.some(([id]) => !accounts.has(Number(id)))) return error(400, "Unknown league account ID");
+        if ([...changes, ...aliasChanges].some(([id]) => !accounts.has(Number(id)))) {
+          return error(400, "Unknown league account ID");
+        }
       }
 
       const current = await readState(DB);
       if (current.revision !== body.revision) return json(current, 409);
       const updated = changes.filter(([id, rating]) => (current.ratings[id] ?? null) !== rating);
-      if (!updated.length) return json(current);
+      const updatedAliases = aliasChanges.filter(([id, alias]) => (current.aliases[id] ?? null) !== alias);
+      if (!updated.length && !updatedAliases.length) return json(current);
 
       const row = await DB.prepare(`
         UPDATE mmr_state
-        SET revision = revision + 1, ratings = json_patch(ratings, ?), updated_at = ?
+        SET revision = revision + 1, ratings = json_patch(ratings, ?), aliases = json_patch(aliases, ?), updated_at = ?
         WHERE id = 1 AND revision = ?
-        RETURNING revision, ratings, updated_at
-      `).bind(JSON.stringify(Object.fromEntries(updated)), new Date().toISOString(), body.revision).first();
+        RETURNING revision, ratings, aliases, updated_at
+      `).bind(
+        JSON.stringify(Object.fromEntries(updated)),
+        JSON.stringify(Object.fromEntries(updatedAliases)),
+        new Date().toISOString(),
+        body.revision,
+      ).first();
       return row ? json(parseState(row)) : json(await readState(DB), 409);
     } catch (err) {
       console.error(err);

@@ -1,5 +1,5 @@
 import { buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=5";
-import { loadSharedMmr } from "./shared-mmr.js?v=1";
+import { loadSharedMmr } from "./shared-mmr.js?v=2";
 
 const form = document.querySelector("#draftForm");
 const inputs = document.querySelector("#draftInputs");
@@ -235,7 +235,8 @@ function renderCalibration() {
 function renderRoster(sharedStatus) {
   calibration = calibrateModel(snapshot, sharedState?.ratings);
   renderCalibration();
-  roster = buildLeagueRoster(snapshot, sharedState?.ratings, calibration.applied)
+  const named = { ...snapshot, player_names: { ...snapshot.player_names, ...sharedState?.aliases } };
+  roster = buildLeagueRoster(named, sharedState?.ratings, calibration.applied)
     .filter((player) => Number.isFinite(player.rating))
     .sort((left, right) => left.name.localeCompare(right.name, "zh-CN") || left.accountId - right.accountId);
   playersById = new Map(roster.map((player) => [player.accountId, player]));

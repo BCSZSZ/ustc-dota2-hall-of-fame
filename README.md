@@ -38,13 +38,13 @@ python replays.py parse --data-dir site/data
 
 
 
-## 天梯分登记和分队
+## 玩家登记和分队
 
-[登记天梯分](https://bcszsz.github.io/ustc-dota2-hall-of-fame/mmr.html)接受按 Account ID 对应的手填 MMR。访客可以修改任意联赛玩家的分数，请只维护自己的。清空后保存会恢复段位估分。分队在打开页面和每次计算时读取共享分数。
+[玩家登记](https://bcszsz.github.io/ustc-dota2-hall-of-fame/mmr.html)按 Account ID 保存手填的玩家 ID 和 MMR。访客可以修改任意联赛玩家，请只维护自己的。玩家 ID 最多 16 个字，填了就在首页、数据页和分队页替代 Steam 昵称（登记页仍显示 Steam 昵称以便找人），留空恢复昵称；各页面读不到共享服务时照常用昵称显示。清空 MMR 后保存会恢复段位估分。分队在打开页面和每次计算时读取共享分数。
 
 基础分优先采用手填 MMR。缺手填分时，用 OpenDota 最近有效段位对应区间的中点粗估。冠绝一世没有固定上限，暂取 6000。缺段位的玩家暂用联赛段位估分的中位数。以基础分为起点回放有效内战，按个人有效场数采纳 Elo 修正，权重为 **min(50%, 场数 ÷ (场数 + 36))**。
 
-共享分数保存在 Sites 的 D1 数据库，和每日生成的联赛快照独立。[服务源码](mmr-api/worker) · [站点身份](mmr-api/.openai/hosting.json) · [数据库迁移](mmr-api/drizzle)
+共享分数和玩家 ID 保存在 Sites 的 D1 数据库（`mmr_state` 的 `ratings`、`aliases` 两列，共用一个版本号做冲突检查），和每日生成的联赛快照独立。[服务源码](mmr-api/worker) · [站点身份](mmr-api/.openai/hosting.json) · [数据库迁移](mmr-api/drizzle)
 
 更新服务时在对应的 Sites 源码副本中运行 **node build.mjs**，沿用现有站点身份打包发布。
 

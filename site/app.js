@@ -1,3 +1,5 @@
+import { loadPlayerAliases } from "./shared-mmr.js?v=2";
+
 const JST_OFFSET = "+09:00";
 const DAY_SECONDS = 86_400;
 
@@ -381,10 +383,14 @@ function bindControls() {
 
 async function load() {
   try {
-    const response = await fetch("./data/league.json", { cache: "no-store" });
+    const [response, aliases] = await Promise.all([
+      fetch("./data/league.json", { cache: "no-store" }),
+      loadPlayerAliases(),
+    ]);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.matches)) throw new Error("战报数据格式不正确");
+    data.player_names = { ...data.player_names, ...aliases };
     const incomplete = new Set(data.metadata?.incomplete_roster_match_ids);
     data.matches = data.matches.filter((match) => !incomplete.has(match.match_id));
     state.data = data;

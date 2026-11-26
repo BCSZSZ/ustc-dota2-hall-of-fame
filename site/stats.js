@@ -1,4 +1,5 @@
 import { matchMap } from "./map.js";
+import { loadPlayerAliases } from "./shared-mmr.js?v=2";
 
 const DAY_SECONDS = 86400;
 const MIN_RATE_GAMES = 5;
@@ -929,8 +930,8 @@ async function load() {
       if (!response.ok) throw new Error(`${path} HTTP ${response.status}`);
       return response.json();
     });
-    const [summaries, constants, league] = await Promise.all([
-      read("./data/matches.json"), read("./data/constants.json"), read("./data/league.json"),
+    const [summaries, constants, league, aliases] = await Promise.all([
+      read("./data/matches.json"), read("./data/constants.json"), read("./data/league.json"), loadPlayerAliases(),
     ]);
     state.heroes = constants.heroes || {};
     state.items = constants.items || {};
@@ -939,7 +940,7 @@ async function load() {
         if (player.account_id && player.personaname) state.names[player.account_id] = player.personaname;
       }
     }
-    Object.assign(state.names, league.player_names || {});
+    Object.assign(state.names, league.player_names || {}, aliases);
     state.matches = summaries.matches || [];
     computeScores();
     if (!state.matches.length) {

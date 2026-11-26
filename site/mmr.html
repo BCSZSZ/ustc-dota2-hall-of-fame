@@ -4,13 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#970018" />
-    <meta name="description" content="登记科大 Dota 2 内战玩家的当前天梯 MMR，用于平衡分队。" />
-    <title>天梯分登记 · 科大光荣榜</title>
+    <meta name="description" content="登记科大 Dota 2 内战玩家的玩家 ID 和当前天梯 MMR。" />
+    <title>玩家登记 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css?v=20261125-5" />
     <link rel="stylesheet" href="./matchmaker.css?v=2" />
-    <link rel="stylesheet" href="./mmr.css?v=1" />
-    <script src="./mmr.js?v=4" type="module"></script>
+    <link rel="stylesheet" href="./mmr.css?v=2" />
+    <script src="./mmr.js?v=5" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">
@@ -20,8 +20,8 @@
           <a class="draft-back" href="./matchmaker.html">平衡分队 <span aria-hidden="true">→</span></a>
           <a class="draft-back" href="./stats.html">数据 <span aria-hidden="true">→</span></a>
         </nav>
-        <h1>天梯分登记</h1>
-        <p>登记的 MMR 会公开用于内战分队。所有访客都能编辑，请只更新自己的分数。</p>
+        <h1>玩家登记</h1>
+        <p>玩家 ID 会替代 Steam 昵称显示在各页面，天梯分公开用于内战分队。所有访客都能编辑，请只更新自己的。</p>
       </div>
     </header>
 
@@ -32,13 +32,15 @@
             <h2>联赛玩家</h2>
             <p class="draft-meta" id="mmrRosterStatus" role="status">正在读取名单和共享天梯分……</p>
           </div>
-          <input class="mmr-input" type="search" id="mmrSearch" aria-label="搜索玩家" placeholder="搜索昵称或 Account ID" disabled />
+          <input class="mmr-input" type="search" id="mmrSearch" aria-label="搜索玩家" placeholder="搜索昵称、玩家 ID 或 Account ID" disabled />
         </div>
-        <p class="draft-meta mmr-help">空白项使用公开段位估分。清空已填分数并保存可恢复估分。</p>
+        <p class="draft-meta mmr-help">玩家 ID 留空则显示 Steam 昵称。天梯分留空使用公开段位估分，清空已填分数并保存可恢复估分。</p>
+        <p class="draft-meta mmr-help mmr-feedback is-error" id="mmrAliasNotice" hidden>共享服务还没有更新，玩家 ID 暂时不能保存。</p>
 
         <div class="mmr-columns" aria-hidden="true">
           <span>玩家</span>
           <span>公开段位估分</span>
+          <span>玩家 ID</span>
           <span>手填 MMR</span>
         </div>
         <div id="mmrRows"></div>

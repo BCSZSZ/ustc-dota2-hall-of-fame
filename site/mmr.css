@@ -32,7 +32,7 @@
 .mmr-columns,
 .mmr-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.5fr) minmax(118px, 0.35fr);
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.45fr) minmax(140px, 0.5fr) minmax(96px, 0.3fr);
   align-items: center;
   gap: 12px;
   padding: 9px 12px;
@@ -130,10 +130,12 @@
 @media (max-width: 560px) {
   .mmr-columns,
   .mmr-row {
-    grid-template-columns: minmax(0, 1fr) minmax(78px, 0.74fr) 79px;
+    grid-template-columns: minmax(0, 1fr) 79px;
     gap: 6px;
     padding-inline: 6px;
   }
+
+  /* Cells wrap into two rows: player | rank, then player ID | MMR. */
 
   .mmr-columns,
   .mmr-rank {

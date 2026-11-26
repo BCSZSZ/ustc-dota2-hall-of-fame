@@ -6,8 +6,9 @@ import worker from "../mmr-api/worker/index.js";
 
 const url = "https://mmr.example/api/mmr";
 const origin = "https://bcszsz.github.io";
-const migration = readFileSync(new URL("../mmr-api/drizzle/0000_shared_mmr.sql", import.meta.url), "utf8");
-const empty = { revision: 0, ratings: {}, updatedAt: null };
+const migrations = ["0000_shared_mmr", "0001_player_aliases"]
+  .map((tag) => readFileSync(new URL(`../mmr-api/drizzle/${tag}.sql`, import.meta.url), "utf8"));
+const empty = { revision: 0, ratings: {}, aliases: {}, updatedAt: null };
 
 function match(matchId, firstAccountId) {
   return {
@@ -23,7 +24,7 @@ function match(matchId, firstAccountId) {
 
 function setup(t, beforeWrite) {
   const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(migration);
+  for (const migration of migrations) sqlite.exec(migration);
   t.after(() => sqlite.close());
   const env = { DB: { prepare(sql) {
     const statement = sqlite.prepare(sql);
@@ -49,7 +50,7 @@ function setup(t, beforeWrite) {
     headers: { Origin: origin, "Content-Type": "application/json; charset=utf-8", ...headers },
     body,
   });
-  const put = (revision, changes) => putRaw(JSON.stringify({ revision, changes }));
+  const put = (revision, changes, aliases) => putRaw(JSON.stringify({ revision, changes, aliases }));
   return { request, put, putRaw, roster };
 }
 
@@ -98,6 +99,36 @@ test("persists only changed ratings and clears a single override with null", asy
   assert.equal(cleared.revision, 2);
   assert.deepEqual(cleared.ratings, { 2: 99999 });
   assert.deepEqual(await (await request()).json(), cleared);
+});
+
+test("stores player aliases alongside ratings and clears one with null", async (t) => {
+  const { request, put } = setup(t);
+  const named = await put(0, { 1: 3000 }, { 1: "平宝", 2: "Pudge King" });
+  assert.equal(named.status, 200);
+  const saved = await named.json();
+  assert.equal(saved.revision, 1);
+  assert.deepEqual(saved.ratings, { 1: 3000 });
+  assert.deepEqual(saved.aliases, { 1: "平宝", 2: "Pudge King" });
+  assert.deepEqual(await (await request()).json(), saved);
+  assert.deepEqual(await (await put(1, {}, { 1: "平宝", 3: null })).json(), saved);
+
+  const renamed = await (await put(1, {}, { 1: null, 2: "屠夫" })).json();
+  assert.equal(renamed.revision, 2);
+  assert.deepEqual(renamed.ratings, { 1: 3000 });
+  assert.deepEqual(renamed.aliases, { 2: "屠夫" });
+});
+
+test("rejects blank, padded, overlong or hidden-character aliases", async (t) => {
+  const { request, put, roster } = setup(t);
+  for (const alias of ["", " 平宝", "平宝 ", "a".repeat(17), "平\n宝", "平\u200b宝", 7, ["平宝"]]) {
+    assert.equal((await put(0, {}, { 1: alias })).status, 400, JSON.stringify(alias));
+  }
+  assert.equal((await put(0, {}, [])).status, 400);
+  assert.equal((await put(0, {}, { "01": "平宝" })).status, 400);
+  assert.equal(roster.mock.callCount(), 0);
+  assert.equal((await put(0, {}, { 11: "隔壁" })).status, 400);
+  assert.equal((await put(0, {}, { 1: "😀".repeat(16) })).status, 200);
+  assert.deepEqual((await (await request()).json()).aliases, { 1: "😀".repeat(16) });
 });
 
 test("an atomic compare-and-swap preserves the first writer and lets the other rebase", { timeout: 3000 }, async (t) => {
