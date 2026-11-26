@@ -12,7 +12,7 @@ from typing import Any, Iterable
 from match_details import _read, _write
 
 # Bump when derived replay data gains or changes fields; older matches are re-parsed once.
-REPLAY_VERSION = 3
+REPLAY_VERSION = 4
 NEAR_CELLS = 1200 / 128
 # The river runs from the top-left Roshan pit (92, 141) to the bottom-right one (148, 106); checked against
 # Roshan kills, tower TP landings and rune pickups. Radiant is below the line.
@@ -197,6 +197,22 @@ def lane_events(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
     return {"lanes": lanes, "roams": sorted(roams, key=lambda roam: (roam[1], roam[0])), "away": away}
 
 
+def level_events(entries: Iterable[dict[str, Any]]) -> dict[str, list[Any]]:
+    """Per player: the second it reached level 6, and its level at 5:00 and at 10:00, from the per-second state."""
+    seen: dict[int, dict[int, int]] = {}
+    for entry in entries:
+        if entry.get("type") == "interval" and entry.get("slot") is not None and isinstance(entry.get("level"), int) \
+                and isinstance(entry.get("time"), (int, float)) and entry["time"] >= 0:
+            seen.setdefault(entry["slot"], {})[int(entry["time"])] = entry["level"]
+    levels = {}
+    for index, by_time in sorted(seen.items()):
+        times = sorted(by_time)
+        at = lambda moment: next((by_time[t] for t in reversed(times) if t <= moment), None)
+        sixth = next((t for t in times if by_time[t] >= 6), None)
+        levels[str(player_slot(index))] = [sixth, at(300), at(600)]
+    return {"levels": levels}
+
+
 def _lost_after(objectives: list[dict[str, Any]], radiant: bool, start: int) -> list[str]:
     own = "goodguys" if radiant else "badguys"
     lost = []
@@ -270,7 +286,11 @@ LANE_COLUMNS = [
     "match_id", "slot", "lane", "role", "source", "opp", "lh5", "lh10", "dn10", "gold5", "gold10", "xp5", "xp10",
     "opp_lh5", "opp_lh10", "opp_gold5", "opp_gold10", "opp_xp10", "result", "lane_diff", "kills", "away", "obs", "sen",
     "deaths", "roams", "ganks", "short_lane", "group", "kind", "dewards",
+    "level6", "lvl5", "lvl10", "opp_level6", "opp_lvl10", "curve_lh", "curve_gold", "curve_xp", "curve_lane",
+    "runes", "stacks", "boots", "first_item", "fb", "roam_kills", "roam_swing", "obs_life", "obs_lost",
 ]
+# Per-minute curves of the laning phase run from 0:00 to this minute.
+CURVE_MINUTES = 12
 # A gank attempt succeeded when the jungler hit an enemy hero who died within this many seconds after it left.
 GANK_GRACE = 5
 # OpenDota's lane_role (1 safe, 2 mid, 3 off, 4 jungle) as a physical lane, used until the replay is parsed.
@@ -285,6 +305,10 @@ def _role(radiant: bool, lane: str) -> str:
     if lane in ("mid", "jungle"):
         return lane
     return "safe" if (lane == "bot") == radiant else "off"
+
+
+def diff(a: Any, b: Any) -> Any:
+    return a - b if isinstance(a, (int, float)) and isinstance(b, (int, float)) else None
 
 
 def _at(values: list[Any], minute: int) -> Any:
@@ -395,11 +419,13 @@ def build_lane_index(data_dir: Path) -> int:
         for player in players:
             slot = player["slot"]
             own_deaths = []
+            logged = [row for row in detail.get("deaths", []) if row[0] == slot]
             for death in (death for death in early if death["slot"] == slot):
                 attackers = death["attackers"]
                 kind = ("other" if not attackers else "gank" if any(group_of.get(a) != group_of[slot] for a in attackers)
                         else "solo" if len(attackers) == 1 else "lane")
-                own_deaths.append([death["t"], kind, attackers])
+                gold_lost = next((row[3] for row in logged if abs((row[1] or 0) - death["t"]) <= 3), None)
+                own_deaths.append([death["t"], kind, attackers, death.get("region"), gold_lost])
             other = opp.get(slot)
             wards = [ward for ward in detail.get("wards", []) if ward[1] == slot and ward[2] < LANING_END]
             dewards = sum(1 for ward in detail.get("wards", []) if ward[6] and ward[7] == slot
@@ -416,6 +442,26 @@ def build_lane_index(data_dir: Path) -> int:
                 short = _short_lane(slot, players, lane_of)
                 if short:
                     short_lane = [*short, result.get(slot)]
+            radiant = slot < 128
+            group = [p["slot"] for p in players if group_of[p["slot"]] == group_of[slot]]
+            curve = lambda key: [diff(value(slot, key, minute), value(other, key, minute)) if other is not None else None
+                                 for minute in range(CURVE_MINUTES + 1)]
+            lane_total = lambda minute, side: sum(value(s2, "gold", minute) or 0 for s2 in group if (s2 < 128) == side)
+            curve_lane = ([lane_total(minute, radiant) - lane_total(minute, not radiant) for minute in range(CURVE_MINUTES + 1)]
+                          if group_of[slot] in ("top", "mid", "bot") and series else None)
+            own_roams = [roam for roam in replay.get("roams", []) if roam[0] == slot] if lane_of[slot] != "jungle" else []
+            roam_kills = sum(1 for roam in own_roams for death in early
+                             if roam[1] <= death["t"] <= roam[2] + GANK_GRACE and slot in death["attackers"])
+            roam_swing = sum((lane_total(min(roam[2] // 60 + 1, CURVE_MINUTES), radiant) - lane_total(min(roam[2] // 60 + 1, CURVE_MINUTES), not radiant))
+                             - (lane_total(roam[1] // 60, radiant) - lane_total(roam[1] // 60, not radiant)) for roam in own_roams) if own_roams and series else None
+            first_blood = min(early, key=lambda death: death["t"], default=None) if replay else None
+            fb = (None if not first_blood else "death" if first_blood["slot"] == slot
+                  else "kill" if slot in first_blood["attackers"] else None)
+            observers = [ward for ward in wards if ward[0] == 0]
+            lived = [ward[5] for ward in observers if ward[5] is not None]
+            level = (replay.get("levels") or {}).get(str(slot)) or [None, None, None]
+            opp_level = (replay.get("levels") or {}).get(str(other)) or [None, None, None] if other is not None else [None, None, None]
+            extra = (detail.get("laning") or {}).get(str(slot)) or {}
             rows.append([
                 match_id, slot, lane_of[slot], _role(slot < 128, group_of[slot]), source_of[slot], other,
                 value(slot, "lh", 5), value(slot, "lh", 10), value(slot, "dn", 10), value(slot, "gold", 5),
@@ -429,6 +475,11 @@ def build_lane_index(data_dir: Path) -> int:
                 own_deaths if replay else None,
                 [roam[1:] for roam in replay.get("roams", []) if roam[0] == slot] if replay and lane_of[slot] != "jungle" else ([] if replay else None),
                 ganks, short_lane, group_of[slot], "core" if _is_core(pos_of[slot]) else "support", dewards,
+                level[0], level[1], level[2], opp_level[0], opp_level[2],
+                curve("lh"), curve("gold"), curve("xp"), curve_lane,
+                extra.get("runes"), extra.get("stacks"), extra.get("boots"), extra.get("first_item"), fb,
+                roam_kills if replay else None, roam_swing,
+                round(sum(lived) / len(lived)) if lived else None, sum(ward[6] for ward in observers),
             ])
     _write(data_dir / "lanes.json", {"columns": LANE_COLUMNS, "rows": rows})
     _write(data_dir / "positions.json", positions)

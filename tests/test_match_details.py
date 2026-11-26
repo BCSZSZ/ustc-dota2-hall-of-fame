@@ -249,3 +249,17 @@ def test_detail_keeps_the_first_fifteen_minutes_of_each_series() -> None:
     result = detail(raw, build_constants(HEROES, ITEMS))
     assert result["series"]["0"]["gold"] == list(range(0, 1600, 100))
     assert result["series"]["0"]["xp"] == [0, 5]
+
+
+def test_laning_counts_runes_and_stacks_before_ten_minutes_and_first_purchases() -> None:
+    from match_details import laning
+
+    raw = raw_match(7, parsed=True)
+    raw["players"][0].update({
+        "runes_log": [{"time": 0, "key": "5"}, {"time": 121, "key": "7"}, {"time": 361, "key": "6"}, {"time": 700, "key": "0"}],
+        "camps_stacked_t": [0] * 8 + [1, 2, 2, 3],
+        "purchase_log": [{"time": -80, "key": "tango"}, {"time": 260, "key": "boots"}, {"time": 600, "key": "blink"}],
+    })
+    result = laning(raw, build_constants(HEROES, ITEMS))["0"]
+    assert result == {"runes": {"power": 1, "bounty": 1, "water": 1, "wisdom": 0}, "stacks": 2, "boots": 260,
+                      "first_item": [600, "blink"]}

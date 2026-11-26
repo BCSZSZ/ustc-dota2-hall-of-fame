@@ -1995,6 +1995,8 @@ a.player-card-head {
 
 .stat-card .diff-down {
   color: #a3261b;
+}
+
 /* Marks a score that comes from the local IMP estimate instead of STRATZ. */
 .est-mark {
   margin-left: 2px;
@@ -2003,4 +2005,136 @@ a.player-card-head {
   font-style: normal;
   font-weight: 700;
   vertical-align: super;
+}
+
+/* ---------- 号位表现（详细） ---------- */
+
+.position-block h5 {
+  margin: 6px 0 0;
+  color: var(--red-900);
+  font-size: 0.95rem;
+}
+
+.sample-tag {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 999px;
+  color: var(--red-900);
+  font-size: 0.75rem;
+  background: var(--gold-100);
+}
+
+/* Each comparison table needs about 440px for its four columns; fit as many side by side as the width allows. */
+.position-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.pair-tables {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .pair-tables {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.compare-table caption {
+  padding: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.compare-table th[scope="row"] {
+  color: var(--ink);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.compare-table td.vs-good {
+  color: #1f6b33;
+  font-weight: 800;
+  background: #e2f2df;
+}
+
+.compare-table td.vs-bad {
+  color: #a3261b;
+  font-weight: 800;
+  background: #f8e3df;
+}
+
+.compare-table .hero-img {
+  width: 40px;
+  height: 23px;
+}
+
+.fact-list {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 10px 0 0;
+  font-size: 0.88rem;
+}
+
+.fact-list dt {
+  color: var(--muted);
+}
+
+.fact-list dd {
+  margin: 0;
+}
+
+.lane-chart polyline.league,
+.key.league::before {
+  stroke: #8a8a8a;
+  background: #8a8a8a;
+}
+
+.lane-chart polyline.league {
+  stroke-dasharray: 5 4;
+}
+
+.show-all {
+  margin-top: 8px;
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--red-900);
+  font-weight: 700;
+  background: #fff;
+}
+
+/* Row labels in comparison tables read as text, not as another header band. */
+.compare-table tbody th {
+  color: var(--ink);
+  background: none;
+  font-weight: 600;
+  text-align: left;
+}
+
+.stat-card .lane-results {
+  margin-top: 4px;
+}
+
+.stat-card .lane-count {
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+/* Four short columns: no need for the generic 640px table minimum. */
+.compare-table {
+  min-width: 0;
+}
+
+.compare-table th,
+.compare-table td {
+  padding: 6px 8px;
 }

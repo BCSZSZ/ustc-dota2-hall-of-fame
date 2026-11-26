@@ -318,10 +318,13 @@ def test_lane_index_pairs_counterparts_and_classifies_laning_deaths(tmp_path: Pa
         "series": {str(slot): {"gold": [0] * 10 + [value], "lh": list(range(11)), "xp": [0] * 11, "dn": [0] * 11}
                    for slot, value in gold.items()},
         "wards": [[0, 4, 30, 100, 100, 360, 0, None], [1, 4, 700, 100, 100, None, 0, None]],
+        "deaths": [[0, 201, "npc_dota_hero_axe", 150, 20]],
+        "laning": {"4": {"runes": {"power": 0, "bounty": 2, "water": 1, "wisdom": 0}, "stacks": 3, "boots": 250, "first_item": None}},
     }))
     lanes = {"0": "bot", "4": "bot", "1": "mid", "128": "bot", "132": "bot", "129": "mid"}
     (tmp_path / "replay" / "7.json").write_text(json.dumps({"v": REPLAY_VERSION, "lanes": lanes, "away": {}, "roams": [[4, 300, 340, "mid"]],
-        "deaths": [{"slot": 0, "t": 200, "attackers": [128]}, {"slot": 0, "t": 400, "attackers": [128, 129]},
+        "levels": {"0": [355, 4, 8], "128": [330, 5, 9]},
+        "deaths": [{"slot": 0, "t": 200, "attackers": [128], "region": "enemy_half"}, {"slot": 0, "t": 400, "attackers": [128, 129]},
                    {"slot": 4, "t": 500, "attackers": [128, 132]}, {"slot": 128, "t": 900, "attackers": [0]}]}))
     (tmp_path / "lane_overrides.json").write_text(json.dumps({"7": {"1": "mid"}}))
 
@@ -332,8 +335,15 @@ def test_lane_index_pairs_counterparts_and_classifies_laning_deaths(tmp_path: Pa
     assert (row[0]["role"], row[0]["opp"], row[4]["opp"], row[128]["role"]) == ("safe", 128, 132, "off")
     assert row[0]["result"] == "W" and row[0]["lane_diff"] == 1500 and row[128]["result"] == "L"
     assert row[1]["source"] == "manual" and row[1]["result"] == "D"
-    assert row[0]["deaths"] == [[200, "solo", [128]], [400, "gank", [128, 129]]]
-    assert row[4]["deaths"] == [[500, "lane", [128, 132]]]
+    # Deaths carry where they happened (replay) and the gold lost (OpenDota's log, matched within 3 s).
+    assert row[0]["deaths"] == [[200, "solo", [128], "enemy_half", 150], [400, "gank", [128, 129], None, None]]
+    assert row[4]["deaths"] == [[500, "lane", [128, 132], None, None]]
+    assert (row[0]["fb"], row[128]["fb"], row[4]["fb"]) == ("death", "kill", None)
+    assert (row[0]["level6"], row[0]["lvl10"], row[0]["opp_level6"], row[0]["opp_lvl10"]) == (355, 8, 330, 9)
+    assert row[0]["curve_gold"][10] == 1000 and row[0]["curve_gold"][11] is None and len(row[0]["curve_gold"]) == 13
+    assert row[0]["curve_lane"][10] == 1500 and row[128]["curve_lane"][10] == -1500
+    assert (row[4]["runes"]["bounty"], row[4]["stacks"], row[4]["boots"], row[4]["obs_life"], row[4]["obs_lost"]) == (2, 3, 250, 360, 0)
+    assert (row[4]["roam_kills"], row[4]["roam_swing"]) == (0, 0)
     assert row[128]["kills"] == 3 and row[128]["deaths"] == []
     assert (row[4]["obs"], row[4]["sen"], row[4]["roams"]) == (1, 0, [[300, 340, "mid"]])
     assert row[0]["lh10"] == 10 and row[0]["opp_lh10"] == 10 and row[0]["gold10"] == 4000 and row[0]["opp_gold10"] == 3000
@@ -386,4 +396,26 @@ def test_jungler_position_ganks_and_counterpart(tmp_path: Path) -> None:
     assert jungler["short_lane"] == ["top", 1, 2, "L"]
     assert jungler["roams"] == [] and row[0]["ganks"] is None and row[0]["short_lane"] is None
     # The jungler's own death came from 129, who laned bot: another lane, so a gank.
-    assert row[2]["deaths"] == [[480, "gank", [129]]]
+    assert row[2]["deaths"] == [[480, "gank", [129], None, None]]
+
+
+def test_level_events_from_real_parser_output() -> None:
+    import gzip
+
+    from replay_events import level_events
+
+    with gzip.open(PARSER_FIXTURE, "rt", encoding="utf-8") as lines:
+        levels = level_events(json.loads(line) for line in lines)["levels"]
+    assert len(levels) == 10
+    for sixth, at5, at10 in levels.values():
+        assert 1 <= at5 <= at10 <= 12
+        assert sixth is None or (at10 >= 6) == (sixth <= 600)
+    # Mid heroes reach level 6 first.
+    assert min(levels, key=lambda slot: levels[slot][0] or 10**6) in ("1", "131")
+
+
+def test_level_events_take_the_first_second_at_level_six() -> None:
+    from replay_events import level_events
+
+    entries = [{"type": "interval", "time": t, "slot": 0, "level": 1 + t // 100} for t in range(0, 700)]
+    assert level_events(entries)["levels"] == {"0": [500, 4, 7]}

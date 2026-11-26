@@ -12,7 +12,7 @@ import httpx
 from PIL import Image
 
 # Bump when summaries or detail files gain fields; older matches are refetched once.
-SUMMARY_VERSION = 9
+SUMMARY_VERSION = 10
 IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
 HERO_IMAGE_SIZE = (128, 72)
 ITEM_IMAGE_SIZE = (66, 48)
@@ -366,10 +366,39 @@ def series(raw: dict[str, Any]) -> dict[str, dict[str, list[int]]]:
     }
 
 
+# OpenDota rune types: 5 bounty, 7 water, 8 wisdom; the rest are power runes.
+RUNE_KINDS = {"5": "bounty", "7": "water", "8": "wisdom"}
+LANING_SECONDS = 600
+
+
+def laning(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Laning-phase extras per player: runes taken and camps stacked by 10:00, boots and first major item times."""
+    items = constants.get("items", {})
+    result = {}
+    for player in raw.get("players") or []:
+        runes = {"power": 0, "bounty": 0, "water": 0, "wisdom": 0}
+        for entry in player.get("runes_log") or []:
+            if (entry.get("time") or 0) < LANING_SECONDS:
+                runes[RUNE_KINDS.get(str(entry.get("key")), "power")] += 1
+        purchases = sorted(player.get("purchase_log") or [], key=lambda entry: entry.get("time") or 0)
+        boots = next((entry["time"] for entry in purchases if entry.get("key") == "boots" or entry.get("key") in BOOTS), None)
+        first = next(([entry["time"], entry["key"]] for entry in purchases
+                      if items.get(entry.get("key"), {}).get("major") and entry.get("key") not in BOOTS), None)
+        stacked = player.get("camps_stacked_t") or []
+        result[str(player.get("player_slot"))] = {
+            "runes": runes,
+            "stacks": stacked[10] if len(stacked) > 10 else (stacked[-1] if stacked else None),
+            "boots": boots,
+            "first_item": first,
+        }
+    return result
+
+
 def detail(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
     return {
         "match_id": raw["match_id"],
         "series": series(raw),
+        "laning": laning(raw, constants),
         "deaths": deaths(raw),
         "buybacks": buybacks(raw),
         "wards": wards(raw, constants),

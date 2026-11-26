@@ -16,7 +16,7 @@ from typing import Any, Callable, Iterable, Iterator
 import httpx
 
 from match_details import GIVE_UP_AFTER, HEAT_BIN, HEAT_PHASE_SECONDS, Client, _iso, _read, _write, schedule_retry
-from replay_events import REPLAY_VERSION, build_death_index, build_lane_index, death_events, lane_events
+from replay_events import REPLAY_VERSION, build_death_index, build_lane_index, death_events, lane_events, level_events
 
 REPO = os.getenv("GITHUB_REPOSITORY") or "BCSZSZ/ustc-dota2-hall-of-fame"
 # Local working copies; the archive itself is the Release assets listed in site/data/replays.json.
@@ -298,6 +298,7 @@ def parse_replays(replay_dir: Path, data_dir: Path, parser_url: str, repo: str =
             _write(data_dir / "heat" / f"{match_id}.json", {"match_id": match_id, **heat})
             _write(data_dir / "replay" / f"{match_id}.json", {
                 "v": REPLAY_VERSION, "match_id": match_id, "deaths": death_events(entries, hero_keys), **lane_events(entries),
+                **level_events(entries),
             })
             done += 1
     return done
