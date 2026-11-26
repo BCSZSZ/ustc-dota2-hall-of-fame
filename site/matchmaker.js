@@ -1,5 +1,5 @@
 import { buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=5";
-import { loadSharedMmr } from "./shared-mmr.js?v=3";
+import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#draftForm");
 const inputs = document.querySelector("#draftInputs");
@@ -266,7 +266,7 @@ function renderRoster(sharedStatus) {
 async function loadRoster() {
   try {
     const [response, sharedStatus] = await Promise.all([
-      fetch("./data/league.json", { cache: "no-store" }),
+      fetch("./data/league.json"),
       refreshSharedScores(),
     ]);
     if (!response.ok) throw new Error("Could not read league snapshot (HTTP " + response.status + ")");

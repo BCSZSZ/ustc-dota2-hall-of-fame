@@ -4,7 +4,7 @@
 
 import {
   CHART_MINUTES, DEATH_KIND, RESULT_TEXT, ROLE_NAME, ROLES, clock, diff, diffChart, loadLanes, mean, signed,
-} from "./lanes.js?v=8";
+} from "./lanes.js?v=10";
 
 const POSITION_NAME = { 1: "1 号位 · 核心", 2: "2 号位 · 核心", 3: "3 号位 · 核心", 4: "4 号位 · 辅助", 5: "5 号位 · 辅助" };
 const REGION_NAME = { own_base: "己方基地", own_half: "己方半场", river: "河道", enemy_half: "敌方半场", enemy_base: "敌方基地" };

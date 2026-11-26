@@ -2,7 +2,7 @@
 // Rows come from data/deaths.json (OpenDota's death log joined with our replay parse); the map snapshot at the
 // moment of a death is read from data/replay/{id}.json when a row is opened.
 
-import { SIZE, clock, loadImage, px, py } from "./map.js?v=2";
+import { SIZE, clock, loadImage, px, py } from "./map.js?v=4";
 
 const REGIONS = { own_base: "己方基地", own_half: "己方半场", river: "河道", enemy_half: "敌方半场", enemy_base: "敌方基地" };
 const LOST = { tower: "塔", barracks: "兵营", ancient: "基地", roshan: "肉山" };
@@ -12,7 +12,7 @@ const replays = new Map();
 const heroImages = new Map();
 
 export function loadDeaths() {
-  indexRows ??= fetch("./data/deaths.json", { cache: "no-store" })
+  indexRows ??= fetch("./data/deaths.json")
     .then((response) => (response.ok ? response.json() : { columns: [], rows: [] }))
     .catch(() => ({ columns: [], rows: [] }))
     .then(({ columns, rows }) => rows.map((row) => Object.fromEntries(columns.map((column, index) => [column, row[index]]))));
@@ -21,7 +21,7 @@ export function loadDeaths() {
 
 function loadReplay(matchId) {
   if (!replays.has(matchId)) {
-    replays.set(matchId, fetch(`./data/replay/${matchId}.json`, { cache: "no-store" })
+    replays.set(matchId, fetch(`./data/replay/${matchId}.json`)
       .then((response) => (response.ok ? response.json() : null)).catch(() => null));
   }
   return replays.get(matchId);

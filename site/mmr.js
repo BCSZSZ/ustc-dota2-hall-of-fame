@@ -1,5 +1,5 @@
 import { buildLeagueRoster, describeRankTier, estimateRankMmr } from "./matchmaker-model.js?v=5";
-import { loadSharedMmr, MAX_ALIAS_CHARS, saveSharedMmr, validAlias } from "./shared-mmr.js?v=3";
+import { loadSharedMmr, MAX_ALIAS_CHARS, saveSharedMmr, validAlias } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#mmrForm");
 const rows = document.querySelector("#mmrRows");
@@ -201,7 +201,7 @@ form.addEventListener("submit", async (event) => {
 
 async function loadEditor() {
   try {
-    const response = await fetch("./data/league.json", { cache: "no-store" });
+    const response = await fetch("./data/league.json");
     if (!response.ok) throw new Error("Could not read league snapshot (HTTP " + response.status + ")");
     const snapshot = await response.json();
     const players = buildLeagueRoster(snapshot)

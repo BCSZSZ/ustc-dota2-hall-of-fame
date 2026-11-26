@@ -1,7 +1,7 @@
 // Data, scoring and components shared by the stats list, match and player pages.
 
 import { estimateImp } from "./imp-model.js?v=4";
-import { loadPlayerAliases } from "./shared-mmr.js?v=3";
+import { loadPlayerAliases } from "./shared-mmr.js?v=4";
 
 const DAY_SECONDS = 86400;
 const MIN_RATE_GAMES = 5;
@@ -35,8 +35,8 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-const hero = (id) => state.heroes[id] || { name: `英雄 ${id}`, en: "", img: "" };
-const item = (key) => state.items[key] || { name: key, img: "" };
+const hero = (id) => state.heroes[id] || { name: `英雄 ${id}` };
+const item = (key) => state.items[key] || { name: key };
 const playerName = (id) => state.names[id] || `Account ${id}`;
 const isRadiant = (player) => player.slot < 128;
 const won = (match, player) => isRadiant(player) === match.radiant_win;
@@ -505,26 +505,36 @@ function playerSummary(accountId, games, leagueDims) {
 // ---------- 数据与时间范围 ----------
 
 async function loadData() {
-  const read = (path) => fetch(path, { cache: "no-store" }).then((response) => {
+  const read = (path) => fetch(path).then((response) => {
     if (!response.ok) throw new Error(`${path} HTTP ${response.status}`);
     return response.json();
   });
-  const [summaries, constants, league, aliases, stratz] = await Promise.all([
-    read("./data/matches.json"), read("./data/constants.json"), read("./data/league.json"), loadPlayerAliases(),
+  let steamNames = null;
+  let latestAliases = null;
+  // Aliases the shared service changed after the page was drawn with remembered ones.
+  const onAliases = (aliases) => {
+    latestAliases = aliases;
+    if (!steamNames) return;
+    state.names = { ...steamNames, ...aliases };
+    state.rerender();
+  };
+  const [summaries, names, league, aliases, stratz, positions] = await Promise.all([
+    read("./data/matches.json"), read("./data/names.json"), read("./data/league.json"), loadPlayerAliases(onAliases),
     read("./data/stratz.json").catch(() => ({})),
+    // Positions corrected after the replay parse (junglers) or by hand replace OpenDota's estimate everywhere.
+    read("./data/positions.json").catch(() => ({})),
   ]);
-  state.heroes = constants.heroes || {};
-  state.items = constants.items || {};
+  state.heroes = names.heroes || {};
+  state.items = names.items || {};
+  steamNames = {};
   for (const match of league.matches || []) {
     for (const player of match.players || []) {
-      if (player.account_id && player.personaname) state.names[player.account_id] = player.personaname;
+      if (player.account_id && player.personaname) steamNames[player.account_id] = player.personaname;
     }
   }
-  Object.assign(state.names, league.player_names || {}, aliases);
+  Object.assign(steamNames, league.player_names || {});
+  state.names = { ...steamNames, ...(latestAliases ?? aliases) };
   state.matches = summaries.matches || [];
-  // Positions corrected after the replay parse (junglers) or by hand replace OpenDota's estimate everywhere.
-  const positions = await fetch("./data/positions.json", { cache: "no-store" })
-    .then((response) => (response.ok ? response.json() : {})).catch(() => ({}));
   for (const match of state.matches) {
     for (const player of match.players) {
       const fixed = positions[match.match_id]?.[player.slot];

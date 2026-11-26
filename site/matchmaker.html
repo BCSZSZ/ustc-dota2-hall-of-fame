@@ -7,9 +7,17 @@
     <meta name="description" content="为科大 Dota 2 内战固定两位队长，计算实力接近的 5v5 阵容。" />
     <title>平衡分队 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20261125-5" />
+    <link rel="stylesheet" href="./styles.css?v=20261126-1" />
     <link rel="stylesheet" href="./matchmaker.css?v=2" />
-    <script src="./matchmaker.js?v=7" type="module"></script>
+    <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
+    <link rel="modulepreload" href="./matchmaker-model.js?v=5" />
+    <link rel="modulepreload" href="./shared-mmr.js?v=4" />
+    <link rel="preload" href="./data/league.json" as="fetch" crossorigin />
+    <script>
+      // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
+      if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
+    </script>
+    <script src="./matchmaker.js?v=9" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">

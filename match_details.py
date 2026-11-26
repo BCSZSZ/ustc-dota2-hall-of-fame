@@ -111,6 +111,14 @@ def build_constants(
     }
 
 
+def site_names(constants: dict[str, Any]) -> dict[str, Any]:
+    """The only constants the site reads: hero and item display names (constants.json is ~6x larger)."""
+    return {
+        group: {key: {"name": entry.get("name") or key} for key, entry in constants.get(group, {}).items()}
+        for group in ("heroes", "items")
+    }
+
+
 def is_parsed(raw: dict[str, Any]) -> bool:
     players = raw.get("players") or []
     return (
@@ -451,7 +459,7 @@ def refresh_match_details(
     refresh_constants: bool,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    """Write matches.json, matches/{id}.json, constants.json and pending.json under data_dir."""
+    """Write matches.json, matches/{id}.json, constants.json, names.json and pending.json under data_dir."""
     now = now or datetime.now(UTC)
     constants_path = data_dir / "constants.json"
     constants = _read(constants_path)
@@ -471,6 +479,7 @@ def refresh_match_details(
         except error_type:
             if not constants.get("heroes"):
                 raise
+    _write(data_dir / "names.json", site_names(constants))
 
     previous = {str(match["match_id"]): match for match in _read(data_dir / "matches.json").get("matches", [])}
     previous_pending = _read(data_dir / "pending.json").get("matches", {})

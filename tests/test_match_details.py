@@ -93,6 +93,9 @@ def test_unparsed_match_is_rechecked_after_1_2_4_8_8_hours_then_given_up(tmp_pat
     client = FakeClient({"/matches/7": raw_match(7, parsed=False)})
 
     state = run(tmp_path, client, START)
+    assert json.loads((tmp_path / "names.json").read_text()) == {
+        "heroes": {"1": {"name": "敌法师"}}, "items": {key: {"name": item["dname"]} for key, item in ITEMS.items()},
+    }
     assert client.requested == ["/matches/7", "POST /request/7"]
     assert state["summary"]["parse"] == "pending"
     gaps = [datetime.fromisoformat(state["pending"]["7"]["next_check_utc"]) - START]

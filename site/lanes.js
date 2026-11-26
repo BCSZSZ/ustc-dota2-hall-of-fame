@@ -1,6 +1,7 @@
 // Laning phase: three lane cards on the match page and three fixed lane slots on the player page.
 // Rows come from data/lanes.json (one per player and match); per-minute curves from the match detail file.
 
+
 const LANES = [["top", "上路"], ["mid", "中路"], ["bot", "下路"]];
 const ROLES = [["safe", "优势路"], ["mid", "中路"], ["off", "劣势路"]];
 const ROLE_NAME = Object.fromEntries([...ROLES, ["jungle", "打野"]]);
@@ -43,7 +44,7 @@ const SOURCE_NOTE = { opendota: "分路暂按 OpenDota 判定，录像解析后�
 let laneRows = null;
 
 export function loadLanes() {
-  laneRows ??= fetch("./data/lanes.json", { cache: "no-store" })
+  laneRows ??= fetch("./data/lanes.json")
     .then((response) => (response.ok ? response.json() : { columns: [], rows: [] }))
     .catch(() => ({ columns: [], rows: [] }))
     .then(({ columns, rows }) => rows.map((row) => Object.fromEntries(columns.map((column, index) => [column, row[index]]))));

@@ -1,4 +1,4 @@
-import { loadPlayerAliases } from "./shared-mmr.js?v=3";
+import { loadPlayerAliases } from "./shared-mmr.js?v=4";
 
 const JST_OFFSET = "+09:00";
 const DAY_SECONDS = 86_400;
@@ -383,14 +383,24 @@ function bindControls() {
 
 async function load() {
   try {
+    let steamNames = null;
+    let latestAliases = null;
+    // Aliases the shared service changed after the page was drawn with remembered ones.
+    const onAliases = (aliases) => {
+      latestAliases = aliases;
+      if (!steamNames) return;
+      state.data.player_names = { ...steamNames, ...aliases };
+      render();
+    };
     const [response, aliases] = await Promise.all([
-      fetch("./data/league.json", { cache: "no-store" }),
-      loadPlayerAliases(),
+      fetch("./data/league.json"),
+      loadPlayerAliases(onAliases),
     ]);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.matches)) throw new Error("战报数据格式不正确");
-    data.player_names = { ...data.player_names, ...aliases };
+    steamNames = { ...data.player_names };
+    data.player_names = { ...steamNames, ...(latestAliases ?? aliases) };
     const incomplete = new Set(data.metadata?.incomplete_roster_match_ids);
     data.matches = data.matches.filter((match) => !incomplete.has(match.match_id));
     state.data = data;

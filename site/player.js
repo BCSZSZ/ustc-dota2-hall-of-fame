@@ -1,11 +1,11 @@
 // Player page: player.html?id=<account_id>[&from=YYYY-MM-DD&to=YYYY-MM-DD].
 
-import { laneSection } from "./positions.js?v=3";
+import { laneSection } from "./positions.js?v=5";
 import {
   LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, item, kda,
   loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, scoreTip, section,
   smoothed, sortableTable, state, statCard, titleChip, visibleMatches,
-} from "./stats-core.js?v=13";
+} from "./stats-core.js?v=15";
 
 function playerDetail(games, matches) {
   const everyone = matches.flatMap((match) => match.players);
@@ -68,11 +68,12 @@ async function load() {
     status.textContent = accountId ? "这名选手没有计入光荣榜的比赛。" : "链接里缺少选手 ID。";
     return;
   }
-  const name = playerName(accountId);
-  document.title = `${name} · 科大光荣榜`;
-  document.querySelector("#playerTitle").textContent = name;
   const page = document.querySelector("#playerPage");
   state.rerender = () => {
+    // Redrawn here too because the alias can change after the first draw.
+    const name = playerName(accountId);
+    document.title = `${name} · 科大光荣榜`;
+    document.querySelector("#playerTitle").textContent = name;
     const matches = visibleMatches();
     const games = gamesOf(accountId, matches);
     status.textContent = `所选时间内 ${games.length} 场 · 全部 ${gamesOf(accountId, state.matches).length} 场 · 时间为日本时间`;

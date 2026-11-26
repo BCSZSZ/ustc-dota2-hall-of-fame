@@ -29,7 +29,9 @@ async function requestState(options, timeout) {
     const response = await fetch(endpoint, { ...options, signal: controller.signal });
     const conflict = response.status === 409 && options.method === "PUT";
     if (!response.ok && !conflict) throw new Error("Shared MMR returned HTTP " + response.status);
-    return { state: await readState(response), conflict };
+    const state = await readState(response);
+    rememberAliases(state.aliases);
+    return { state, conflict };
   } finally {
     clearTimeout(timer);
   }
@@ -39,15 +41,45 @@ export async function loadSharedMmr() {
   return (await requestState({ cache: "no-store" }, 10000)).state;
 }
 
-// Player aliases replace Steam names everywhere except the registration page.
-// Pages still render with Steam names when the shared service is slow or down.
-export async function loadPlayerAliases() {
+// The last aliases this browser read, so pages can draw names before the shared service answers.
+const ALIAS_STORE = "ustc-hof-aliases";
+const FIRST_VISIT_WAIT_MS = 1500;
+
+function rememberAliases(aliases) {
   try {
-    return (await loadSharedMmr()).aliases ?? {};
-  } catch (error) {
-    console.error("Could not read player aliases", error);
-    return {};
+    if (isObject(aliases)) localStorage.setItem(ALIAS_STORE, JSON.stringify(aliases));
+  } catch {
+    // Storage can be full or blocked; names then simply wait for the service next time.
   }
+}
+
+function rememberedAliases() {
+  try {
+    const aliases = JSON.parse(localStorage.getItem(ALIAS_STORE));
+    return isObject(aliases) ? aliases : null;
+  } catch {
+    return null;
+  }
+}
+
+// Player aliases replace Steam names everywhere except the registration page.
+// Resolves at once with the aliases remembered from the last visit (a first visit waits at most
+// FIRST_VISIT_WAIT_MS), then calls onChange if the shared service answers with different ones.
+// Pages keep Steam names when the service is slow or down.
+export async function loadPlayerAliases(onChange = () => {}) {
+  let shown = rememberedAliases();
+  const fresh = loadSharedMmr().then((state) => state.aliases ?? {}, (error) => {
+    console.error("Could not read player aliases", error);
+    return null;
+  });
+  fresh.then((aliases) => {
+    if (aliases && shown && JSON.stringify(aliases) !== JSON.stringify(shown)) onChange(aliases);
+  });
+  if (!shown) {
+    const timeout = new Promise((resolve) => setTimeout(resolve, FIRST_VISIT_WAIT_MS, null));
+    shown = (await Promise.race([fresh, timeout])) ?? {};
+  }
+  return shown;
 }
 
 export async function saveSharedMmr(revision, changes, aliases = {}) {

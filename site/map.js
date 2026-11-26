@@ -1,6 +1,7 @@
 // Minimap view for one match: hero position heatmaps and ward placements.
 // Positions use OpenDota map cells (64-192 on both axes, y pointing north).
 
+
 const MAP_IMAGE = "./img/map/detailed_740.webp";
 export const SIZE = 640;
 const WARD_SECONDS = [360, 420];
@@ -29,7 +30,7 @@ export function loadImage() {
 
 function loadHeat(matchId) {
   if (!heatFiles.has(matchId)) {
-    heatFiles.set(matchId, fetch(`./data/heat/${matchId}.json`, { cache: "no-store" })
+    heatFiles.set(matchId, fetch(`./data/heat/${matchId}.json`)
       .then((response) => (response.ok ? response.json() : null))
       .catch(() => null));
   }
