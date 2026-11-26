@@ -123,7 +123,7 @@ function scoreboard(match, radiant) {
     el("h3", {}, radiant ? "天辉" : "夜魇", el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
       el("small", {}, `击杀 ${radiant ? match.radiant_score : match.dire_score}`)),
     el("div", { class: "table-scroll" }, el("table", { class: "data-table scoreboard" },
-      el("thead", {}, el("tr", {}, ["选手", "英雄", "评分", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10 分钟经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
+      el("thead", {}, el("tr", {}, ["选手", "英雄", "评分", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10′ 经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
       el("tbody", {}, rows))));
 }
 
