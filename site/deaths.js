@@ -1,4 +1,4 @@
-// Death review for one match and death profile for one player.
+// Death review for one match.
 // Rows come from data/deaths.json (OpenDota's death log joined with our replay parse); the map snapshot at the
 // moment of a death is read from data/replay/{id}.json when a row is opened.
 
@@ -6,8 +6,6 @@ import { SIZE, clock, loadImage, px, py } from "./map.js?v=2";
 
 const REGIONS = { own_base: "己方基地", own_half: "己方半场", river: "河道", enemy_half: "敌方半场", enemy_base: "敌方基地" };
 const LOST = { tower: "塔", barracks: "兵营", ancient: "基地", roshan: "肉山" };
-const PHASES = [[0, 600, "0–10′"], [600, 1200, "10–20′"], [1200, 1800, "20–30′"], [1800, Infinity, "30′+"]];
-const MIN_GAMES = 5;
 
 let indexRows = null;
 const replays = new Map();
@@ -42,12 +40,9 @@ function heroImage(id) {
 }
 
 const positioned = (death) => death.region !== null && death.region !== undefined;
-// Alone: no living teammate within 1200 units. Deep: on the enemy side of the river or in the enemy base.
+// Alone: no living teammate within 1200 units. Whether a death was a mistake is left to the reader.
 const isAlone = (death) => death.allies === 0;
-const isDeep = (death) => death.region === "enemy_half" || death.region === "enemy_base";
-const isCareless = (death) => isAlone(death) && isDeep(death);
 const radiantSlot = (slot) => slot < 128;
-const percent = (part, whole) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
 
 function killerText(death, match, ui) {
   if (typeof death.killer === "number") {
@@ -65,11 +60,7 @@ function killerText(death, match, ui) {
 
 function tags(death, ui) {
   if (!positioned(death)) return "—";
-  return [
-    isCareless(death) ? ui.el("span", { class: "death-tag careless", title: "身边没有队友，且死在敌方半场或敌方基地" }, "无谓") : null,
-    isAlone(death) && !isCareless(death) ? ui.el("span", { class: "death-tag", title: "1200 码内没有存活的队友" }, "孤立") : null,
-    isDeep(death) && !isCareless(death) ? ui.el("span", { class: "death-tag", title: "死在敌方半场或敌方基地" }, "深入") : null,
-  ];
+  return isAlone(death) ? ui.el("span", { class: "death-tag alone", title: "1200 码内没有存活的队友" }, "孤立") : null;
 }
 
 function drawDots(context, deaths, highlight) {
@@ -78,7 +69,7 @@ function drawDots(context, deaths, highlight) {
     const y = py(death.y);
     context.lineWidth = 2;
     context.strokeStyle = radiantSlot(death.slot) ? "#7dff9a" : "#ff6b5a";
-    context.fillStyle = isCareless(death) ? "#ff2a2a" : "rgba(20, 10, 8, 0.55)";
+    context.fillStyle = isAlone(death) ? "#ff2a2a" : "rgba(20, 10, 8, 0.55)";
     context.beginPath();
     context.arc(x, y, death === highlight ? 9 : 6, 0, Math.PI * 2);
     context.fill();
@@ -148,7 +139,7 @@ export function deathReview(match, ui) {
       box.replaceChildren(el("p", { class: "draft-meta" }, "这场还没有死亡记录（需要 OpenDota 解析完成）。"));
       return;
     }
-    const view = { side: "all", carelessOnly: false, open: null };
+    const view = { side: "all", aloneOnly: false, open: null };
     const playerOf = (slot) => match.players.find((player) => player.slot === slot);
     const canvas = el("canvas", { width: SIZE, height: SIZE, class: "map-canvas", role: "img", "aria-label": "死亡位置图" });
     const caption = el("p", { class: "draft-meta map-note" });
@@ -162,18 +153,18 @@ export function deathReview(match, ui) {
       return el("div", { class: `death-sum ${radiant ? "radiant" : "dire"}` },
         el("b", {}, radiant ? "天辉" : "夜魇"),
         ` 死亡 ${list.length} 次`,
-        placed.length ? ` · 孤立 ${placed.filter(isAlone).length} · 无谓 ${placed.filter(isCareless).length}` : "",
+        placed.length ? ` · 孤立 ${placed.filter(isAlone).length}` : "",
         ` · 死后 90 秒内丢目标 ${list.filter((death) => death.lost.length).length} 次`);
     });
 
     const shown = () => deaths.filter((death) =>
-      (view.side === "all" || (view.side === "radiant") === radiantSlot(death.slot)) && (!view.carelessOnly || isCareless(death)));
+      (view.side === "all" || (view.side === "radiant") === radiantSlot(death.slot)) && (!view.aloneOnly || (positioned(death) && isAlone(death))));
 
     async function drawOverview() {
       const context = await drawBase(canvas);
       drawDots(context, shown(), null);
       caption.replaceChildren(anyPositioned
-        ? "每个点是一次死亡，边框颜色是阵亡方（绿天辉、红夜魇），实心红点是无谓死亡。点表格里的一行，查看那一刻 10 名英雄的位置。"
+        ? "每个点是一次死亡，边框颜色是阵亡方（绿天辉、红夜魇），实心红点是孤立死亡。点表格里的一行，查看那一刻 10 名英雄的位置。"
         : "录像还没解析，暂时没有死亡位置。");
     }
 
@@ -186,12 +177,12 @@ export function deathReview(match, ui) {
         button("全部", view.side === "all", () => { view.side = "all"; render(); }),
         button("天辉阵亡", view.side === "radiant", () => { view.side = "radiant"; render(); }),
         button("夜魇阵亡", view.side === "dire", () => { view.side = "dire"; render(); }),
-        anyPositioned ? button("只看无谓死亡", view.carelessOnly, () => { view.carelessOnly = !view.carelessOnly; render(); }) : null);
+        anyPositioned ? button("只看孤立死亡", view.aloneOnly, () => { view.aloneOnly = !view.aloneOnly; render(); }) : null);
       body.replaceChildren(...shown().map((death) => {
         const victim = playerOf(death.slot);
         const open = view.open === death;
         return el("tr", {
-          class: `${radiantSlot(death.slot) ? "radiant" : "dire"}${open ? " open" : ""}${positioned(death) && isCareless(death) ? " careless" : ""}`,
+          class: `${radiantSlot(death.slot) ? "radiant" : "dire"}${open ? " open" : ""}${positioned(death) && isAlone(death) ? " alone" : ""}`,
           tabindex: "0",
           onclick: () => select(death),
           onkeydown: (event) => { if (event.key === "Enter") select(death); },
@@ -232,92 +223,14 @@ export function deathReview(match, ui) {
       el("div", { class: "death-layout" },
         el("div", { class: "map-stage" }, canvas),
         el("div", { class: "table-scroll death-table-wrap" }, el("table", { class: "data-table death-table" },
-          el("thead", {}, el("tr", {}, ["时间", "阵亡", "击杀者", "参与", "位置", "附近队友 / 敌人", "损失金钱", "复活", "买活", "随后丢失", "判定"]
+          el("thead", {}, el("tr", {}, ["时间", "阵亡", "击杀者", "参与", "位置", "附近队友 / 敌人", "损失金钱", "复活", "买活", "随后丢失", "孤立"]
             .map((label) => el("th", { scope: "col" }, label)))),
           body))),
       caption,
       el("p", { class: "draft-meta" },
-        "参与：死前 10 秒对阵亡者造成伤害的敌方英雄数。附近：1200 码内存活的英雄。孤立：身边没有队友；无谓：孤立且死在敌方半场或敌方基地。",
+        "参与：死前 10 秒对阵亡者造成伤害的敌方英雄数。附近：1200 码内存活的英雄。孤立：1200 码内没有存活的队友。",
         "随后丢失：死后 90 秒内本方被拆的建筑或被敌方击杀的肉山。半场以河道为界，基地为泉水周围约 3600 码。"));
     render();
-  });
-  return box;
-}
-
-// Per-appearance death metrics for a set of games ({ match, player }).
-function metrics(games, rows) {
-  const keys = new Set(games.map((game) => `${game.match.match_id}:${game.player.slot}`));
-  const deaths = rows.filter((row) => keys.has(`${row.match_id}:${row.slot}`));
-  const placed = deaths.filter(positioned);
-  const phases = PHASES.map(([from, to]) => {
-    const reached = games.filter((game) => game.match.duration > from).length;
-    return reached ? deaths.filter((death) => death.t >= from && death.t < to).length / reached : null;
-  });
-  const average = (key) => (deaths.length ? deaths.reduce((sum, death) => sum + (death[key] || 0), 0) / deaths.length : null);
-  return {
-    games: games.length,
-    deaths,
-    placed,
-    perGame: games.length ? deaths.length / games.length : null,
-    phases,
-    alone: placed.length ? placed.filter(isAlone).length / placed.length : null,
-    deep: placed.length ? placed.filter(isDeep).length / placed.length : null,
-    careless: placed.length ? placed.filter(isCareless).length / placed.length : null,
-    gold: average("gold_lost"),
-    dead: average("time_dead"),
-    lost: deaths.length ? deaths.filter((death) => death.lost.length).length / deaths.length : null,
-  };
-}
-
-// League baseline weighted by the positions this player actually played.
-function baseline(games, everyone, rows, key, phase) {
-  const values = games.map((game) => {
-    const peers = everyone.filter((other) => other.player.pos === game.player.pos);
-    const value = metrics(peers, rows)[key];
-    return phase === undefined ? value : value?.[phase];
-  }).filter((value) => value !== null && value !== undefined);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-}
-
-export function deathProfile(games, matches, ui) {
-  const { el } = ui;
-  const box = el("div", { class: "death-profile" }, el("p", { class: "draft-meta" }, "正在读取死亡记录……"));
-  loadDeaths().then(async (rows) => {
-    const everyone = matches.flatMap((match) => match.players.map((player) => ({ match, player })));
-    const mine = metrics(games, rows);
-    const fixed = (value, digits = 1) => (value === null || value === undefined ? "—" : value.toFixed(digits));
-    const pct = (value) => (value === null || value === undefined ? "—" : `${Math.round(value * 100)}%`);
-    const versus = (key, format) => `同号位 ${format(baseline(games, everyone, rows, key))}`;
-    const canvas = el("canvas", { width: SIZE, height: SIZE, class: "map-canvas", role: "img", "aria-label": "本人死亡位置图" });
-    const context = await drawBase(canvas);
-    drawDots(context, mine.deaths, null);
-    const thin = games.length < MIN_GAMES;
-
-    box.replaceChildren(
-      el("p", { class: "draft-meta" },
-        `${mine.games} 场共死亡 ${mine.deaths.length} 次，其中 ${mine.placed.length} 次有录像位置。`,
-        "对比对象是联赛里同号位的所有出场，按本人各号位的场次加权。",
-        thin ? `不到 ${MIN_GAMES} 场，只看方向。` : ""),
-      el("div", { class: "stat-cards" },
-        ui.statCard("场均死亡", fixed(mine.perGame), versus("perGame", fixed)),
-        ui.statCard("孤立阵亡", pct(mine.alone), versus("alone", pct)),
-        ui.statCard("死在敌方区域", pct(mine.deep), versus("deep", pct)),
-        ui.statCard("无谓死亡", pct(mine.careless), versus("careless", pct)),
-        ui.statCard("平均损失金钱", fixed(mine.gold, 0), versus("gold", (value) => fixed(value, 0))),
-        ui.statCard("平均复活时间", mine.dead === null ? "—" : `${fixed(mine.dead, 0)} 秒`, versus("dead", (value) => `${fixed(value, 0)} 秒`)),
-        ui.statCard("死后 90 秒内丢目标", pct(mine.lost), versus("lost", pct))),
-      el("div", { class: "death-layout" },
-        el("div", { class: "map-stage" }, canvas),
-        el("div", {},
-          el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
-            el("thead", {}, el("tr", {}, ["时段", "本人每场死亡", "同号位每场死亡"].map((label) => el("th", { scope: "col" }, label)))),
-            el("tbody", {}, PHASES.map(([, , label], index) => el("tr", {},
-              el("td", {}, label),
-              el("td", { class: "num" }, fixed(mine.phases[index], 2)),
-              el("td", { class: "num" }, fixed(baseline(games, everyone, rows, "phases", index), 2))))))),
-          el("p", { class: "draft-meta" },
-            "地图上每个点是一次死亡，实心红点是无谓死亡（身边没有队友，且死在敌方半场或敌方基地）。",
-            "每场死亡按到达该时段的场次计算。"))));
   });
   return box;
 }

@@ -1342,8 +1342,7 @@
   box-shadow: inset 3px 0 #b23a2b;
 }
 
-.death-review,
-.death-profile {
+.death-review {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
@@ -1407,7 +1406,7 @@
   background: var(--gold-100);
 }
 
-.death-table tr.careless td {
+.death-table tr.alone td {
   font-weight: 700;
 }
 
@@ -1422,7 +1421,7 @@
   white-space: nowrap;
 }
 
-.death-tag.careless {
+.death-tag.alone {
   border-color: var(--red-700);
   color: #fff;
   background: var(--red-700);

@@ -1,6 +1,5 @@
 // Player page: player.html?id=<account_id>[&from=YYYY-MM-DD&to=YYYY-MM-DD].
 
-import { deathProfile } from "./deaths.js?v=1";
 import {
   LANE_ROLES, LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroLabel, kda,
   laneSummary, loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, section,
@@ -48,8 +47,6 @@ function playerDetail(games, matches) {
           el("td", { class: "num" }, rounded(averageOf(row.list.map((game) => game.player), "gold10"))),
           el("td", { class: "num" }, rounded(averageOf(row.list.map((game) => game.player), "lh10"))),
           el("td", { class: "num" }, record(row.wins, row.list.length))))))) : null),
-    section("死亡", "每次死亡的时段、地点和身边情况，用来找可以改的习惯。",
-      deathProfile(games, matches, { el, statCard })),
     section("场均数据", null, el("div", { class: "stat-cards" },
       statCard("K/D/A", kda(mine).text, `联赛平均 ${kda(everyone).text}`),
       statCard("GPM", rounded(averageOf(mine, "gpm")), league("gpm")),
