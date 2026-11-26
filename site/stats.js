@@ -216,8 +216,9 @@ function scoreboard(match, radiant) {
   const teamWon = radiant === match.radiant_win;
   const rows = players.map((player) =>
     el("tr", {},
-      el("td", {}, playerLink(player.account_id)),
+      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge() : null),
       el("td", {}, heroLabel(player.hero)),
+      el("td", { class: "num" }, el("b", {}, scoreText(player.score))),
       el("td", { class: "num" }, player.pos ? `${player.pos} 号位` : "—"),
       el("td", { class: "num" }, `${player.k}/${player.d}/${player.a}`),
       el("td", { class: "num" }, `${player.lh}/${player.dn}`),
@@ -238,7 +239,7 @@ function scoreboard(match, radiant) {
     el("h3", {}, radiant ? "天辉" : "夜魇", el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
       el("small", {}, `击杀 ${radiant ? match.radiant_score : match.dire_score}`)),
     el("div", { class: "table-scroll" }, el("table", { class: "data-table scoreboard" },
-      el("thead", {}, el("tr", {}, ["选手", "英雄", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10 分钟经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
+      el("thead", {}, el("tr", {}, ["选手", "英雄", "评分", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10 分钟经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
       el("tbody", {}, rows))));
 }
 
@@ -293,7 +294,11 @@ function renderMatches(panel, matches) {
           render();
         },
       },
-      el("span", { class: "match-when" }, formatDate(match.start_time), el("small", {}, formatDuration(match.duration))),
+      el("span", { class: "match-when" }, formatDate(match.start_time), el("small", {}, formatDuration(match.duration)),
+        (() => {
+          const mvp = match.players.find((player) => isMvp(match, player));
+          return mvp ? el("small", { class: "match-mvp" }, mvpBadge(), mvp.account_id ? playerName(mvp.account_id) : hero(mvp.hero).name) : null;
+        })()),
       side(true),
       el("span", { class: "match-score" }, `${match.radiant_score} : ${match.dire_score}`),
       side(false)));
@@ -383,6 +388,138 @@ function renderHeroes(panel, matches) {
     ], rows, "count")));
 }
 
+// ---------- 综合评分 ----------
+
+const DIMENSIONS = [
+  { key: "econ", label: "经济" },
+  { key: "farm", label: "发育/视野" },
+  { key: "dmg", label: "输出" },
+  { key: "push", label: "推进" },
+  { key: "surv", label: "生存" },
+  { key: "team", label: "参与" },
+];
+
+const isSupport = (player) => player.pos === 4 || player.pos === 5;
+
+function meanOf(values) {
+  const list = values.filter(Number.isFinite);
+  return list.length ? list.reduce((sum, value) => sum + value, 0) / list.length : null;
+}
+
+function percentileRank(value, sorted) {
+  if (!Number.isFinite(value) || !sorted.length) return null;
+  let below = 0;
+  let equal = 0;
+  for (const other of sorted) {
+    if (other < value) below += 1;
+    else if (other === value) equal += 1;
+  }
+  return Math.round(((below + equal / 2) / sorted.length) * 100);
+}
+
+// Six 0-100 dimensions per game: OpenDota's same-hero percentiles where they exist,
+// league-internal percentiles for team-fight participation and for supports' vision work.
+function computeScores() {
+  const players = state.matches.flatMap((match) => match.players);
+  const sorted = (rows, pick) => rows.map(pick).filter(Number.isFinite).sort((a, b) => a - b);
+  const wardsOf = (player) => (Number.isFinite(player.obs) ? player.obs + (player.sen ?? 0) : null);
+  const supports = players.filter(isSupport);
+  const pools = {
+    tf: sorted(players, (player) => player.tf),
+    wards: sorted(supports, wardsOf),
+    stacks: sorted(supports, (player) => player.stacks),
+    stuns: sorted(supports, (player) => player.stuns),
+  };
+  for (const match of state.matches) {
+    for (const player of match.players) {
+      if (!player.bm) {
+        player.dims = null;
+        player.score = null;
+        continue;
+      }
+      player.dims = {
+        econ: player.bm.gpm,
+        farm: isSupport(player)
+          ? meanOf([percentileRank(wardsOf(player), pools.wards), percentileRank(player.stacks, pools.stacks), percentileRank(player.stuns, pools.stuns)])
+          : meanOf([player.bm.lhm, player.bm.xpm]),
+        dmg: player.bm.hdm,
+        push: player.bm.td,
+        surv: player.bm.death,
+        team: percentileRank(player.tf, pools.tf),
+      };
+      player.score = meanOf(Object.values(player.dims));
+    }
+    const best = match.players.filter((player) => Number.isFinite(player.score)).sort((a, b) => b.score - a.score)[0];
+    match.mvp = best ? best.slot : null;
+  }
+}
+
+const isMvp = (match, player) => match.mvp === player.slot;
+const scoreText = (value) => (Number.isFinite(value) ? String(Math.round(value)) : "—");
+
+function averageDims(players) {
+  return Object.fromEntries(DIMENSIONS.map(({ key }) => [key, meanOf(players.map((player) => player.dims?.[key]))]));
+}
+
+function radar(values, { size = 132, compare = null } = {}) {
+  const center = size / 2;
+  const radius = size / 2 - 20;
+  const point = (index, value) => {
+    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / DIMENSIONS.length;
+    const length = (radius * Math.max(0, Math.min(100, value ?? 0))) / 100;
+    return [center + length * Math.cos(angle), center + length * Math.sin(angle)];
+  };
+  const shape = (data) => DIMENSIONS.map(({ key }, index) => point(index, data[key]).map((n) => n.toFixed(1)).join(",")).join(" ");
+  const rings = [25, 50, 75, 100].map((level) =>
+    `<polygon points="${DIMENSIONS.map((_, index) => point(index, level).join(",")).join(" ")}" class="ring"/>`).join("");
+  const labels = DIMENSIONS.map(({ label }, index) => {
+    const [x, y] = point(index, 128);
+    return `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle">${label}</text>`;
+  }).join("");
+  const figure = el("span", { class: "radar" });
+  figure.innerHTML = `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="六项能力百分位">
+    ${rings}${compare ? `<polygon points="${shape(compare)}" class="compare"/>` : ""}<polygon points="${shape(values)}" class="value"/>${labels}</svg>`;
+  return figure;
+}
+
+const mvpBadge = () => el("span", { class: "mvp", title: "本场综合评分最高" }, "MVP");
+
+// ---------- 纪录墙 ----------
+
+const RECORDS = [
+  { label: "最高综合评分", value: (player) => player.score, format: (value) => Math.round(value) },
+  { label: "最多击杀", value: (player) => player.k },
+  { label: "最多助攻", value: (player) => player.a },
+  { label: "最高 GPM", value: (player) => player.gpm },
+  { label: "最高 XPM", value: (player) => player.xpm },
+  { label: "最多正补", value: (player) => player.lh },
+  { label: "最高英雄伤害", value: (player) => player.hd },
+  { label: "最高建筑伤害", value: (player) => player.td },
+  { label: "最高治疗", value: (player) => player.hh },
+  { label: "最多插眼", value: (player) => (Number.isFinite(player.obs) ? player.obs + (player.sen ?? 0) : null) },
+  { label: "最多堆野", value: (player) => player.stacks },
+  { label: "最长控制", value: (player) => player.stuns, format: (value) => `${value} 秒` },
+];
+
+function recordWall(matches) {
+  const cards = RECORDS.map((record) => {
+    let best = null;
+    for (const match of matches) {
+      for (const player of match.players) {
+        const value = record.value(player);
+        if (Number.isFinite(value) && value > 0 && (!best || value > best.value)) best = { value, match, player };
+      }
+    }
+    if (!best) return null;
+    return el("a", { class: "record-card", href: `#tab=matches&match=${best.match.match_id}`, title: "查看这场比赛" },
+      el("span", { class: "record-label" }, record.label),
+      el("strong", {}, record.format ? record.format(best.value) : best.value.toLocaleString()),
+      el("span", { class: "record-who" }, heroIcon(best.player.hero), best.player.account_id ? playerName(best.player.account_id) : "匿名"),
+      el("small", {}, `${hero(best.player.hero).name} · ${formatDate(best.match.start_time)}`));
+  });
+  return section("纪录墙", "所选时间内的单场最佳，点击查看那场比赛。", el("div", { class: "record-grid" }, cards));
+}
+
 // ---------- 选手 ----------
 
 const LANE_ROLES = { 1: "优势路", 2: "中路", 3: "劣势路" };
@@ -459,7 +596,20 @@ function playerDetail(games, matches) {
     row.wins += game.won ? 1 : 0;
   }
 
+  const dims = averageDims(mine);
+  const leagueDims = averageDims(everyone);
   return el("div", { class: "player-detail" },
+    section("综合表现",
+      "经济、输出、推进、生存，以及核心的发育（正补、经验）取 OpenDota 与全网同英雄玩家相比的百分位；4、5 号位的发育换成视野（插眼、堆野、控制时长在联赛辅助中的百分位）；参与为团战参与率在联赛中的百分位。综合评分是六项的平均，每场最高者为 MVP。",
+      el("div", { class: "score-detail" },
+        radar(dims, { size: 220, compare: leagueDims }),
+        el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
+          el("thead", {}, el("tr", {}, ["能力", "百分位", "联赛平均"].map((label) => el("th", { scope: "col" }, label)))),
+          el("tbody", {}, DIMENSIONS.map(({ key, label }) => el("tr", {},
+            el("td", {}, label),
+            el("td", { class: "num" }, el("span", { class: "dim-bar" }, el("i", { style: `width:${dims[key] ?? 0}%` })), scoreText(dims[key])),
+            el("td", { class: "num" }, scoreText(leagueDims[key])))))))),
+      el("p", { class: "draft-meta" }, "雷达图实线为该选手，虚线为联赛平均。")),
     section("对线", "看 10 分钟时的情况。对线结果按该路双方选手 10 分钟经济总和比较，领先 10% 以上为优，落后 10% 以上为劣，其余为均。",
       el("div", { class: "stat-cards" },
         statCard("10 分钟经济", rounded(averageOf(mine, "gold10")), league("gold10")),
@@ -490,15 +640,17 @@ function playerDetail(games, matches) {
       { key: "record", label: "胜负", value: (row) => row.wins - (row.games.length - row.wins), render: (row) => record(row.wins, row.games.length), align: "num" },
       { key: "rate", label: "胜率", value: (row) => smoothed(row.wins, row.games.length), render: (row) => rate(row.wins, row.games.length), align: "num" },
       { key: "kda", label: "平均 K/D/A", value: (row) => kda(row.games).ratio, render: (row) => kda(row.games).text, align: "num" },
+      { key: "score", label: "评分", value: (row) => meanOf(row.games.map((player) => player.score)) ?? -1, render: (row) => scoreText(meanOf(row.games.map((player) => player.score))), align: "num" },
       { key: "gold10", label: "10 分钟经济", value: (row) => averageOf(row.games, "gold10") ?? -1, render: (row) => rounded(averageOf(row.games, "gold10")), align: "num" },
       { key: "gpm", label: "GPM", value: (row) => averageOf(row.games, "gpm") ?? -1, render: (row) => rounded(averageOf(row.games, "gpm")), align: "num" },
     ], [...heroes.values()], "games")),
     section("比赛记录", null, el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
-      el("thead", {}, el("tr", {}, ["结果", "时间", "英雄", "位置", "K/D/A", "10 分钟经济", "对线", ""].map((label) => el("th", { scope: "col" }, label)))),
+      el("thead", {}, el("tr", {}, ["结果", "时间", "英雄", "评分", "位置", "K/D/A", "10 分钟经济", "对线", ""].map((label) => el("th", { scope: "col" }, label)))),
       el("tbody", {}, [...games].reverse().map((game) => el("tr", {},
         el("td", {}, el("span", { class: game.won ? "result win" : "result" }, game.won ? "胜" : "负")),
         el("td", {}, formatDate(game.match.start_time)),
         el("td", {}, heroLabel(game.player.hero)),
+        el("td", { class: "num" }, scoreText(game.player.score), isMvp(game.match, game.player) ? mvpBadge() : null),
         el("td", { class: "num" }, game.player.pos ? `${game.player.pos} 号位` : "—"),
         el("td", { class: "num" }, `${game.player.k}/${game.player.d}/${game.player.a}`),
         el("td", { class: "num" }, rounded(game.player.gold10 ?? null)),
@@ -517,7 +669,8 @@ function renderPlayers(panel, matches) {
   }
   const roster = [...byPlayer.entries()].sort((a, b) =>
     b[1].length - a[1].length || playerName(a[0]).localeCompare(playerName(b[0]), "zh-CN"));
-  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。柱子高度为该号位场次，金色部分为胜场；号位为 OpenDota 根据录像的估计。点开卡片查看对线和详细数据。`));
+  panel.append(recordWall(matches));
+  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。综合评分为六项能力百分位的平均，详见卡片展开后的说明。柱子高度为该号位场次，金色部分为胜场；号位为 OpenDota 根据录像的估计。点开卡片查看对线和详细数据。`));
   const grid = el("div", { class: "player-grid" });
   for (const [accountId, games] of roster) {
     const open = state.player === accountId;
@@ -536,7 +689,18 @@ function renderPlayers(panel, matches) {
       el("span", { class: "pc-title" },
         el("strong", {}, playerName(accountId)),
         el("span", { class: "pc-record" }, `${record(wins, games.length)} · ${winText(wins, games.length)}`)),
-      el("span", { class: "pc-meta" }, `K/D/A ${kda(mine).text} · GPM ${rounded(averageOf(mine, "gpm"))}`),
+      (() => {
+        const scored = mine.filter((player) => Number.isFinite(player.score));
+        const mvps = games.filter((game) => isMvp(game.match, game.player)).length;
+        return el("span", { class: "pc-summary" },
+          radar(averageDims(mine)),
+          el("span", { class: "pc-score" },
+            el("span", { class: "pc-score-label" }, "综合评分"),
+            el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "" }, scoreText(meanOf(scored.map((player) => player.score)))),
+            el("span", { class: "pc-mvps" }, mvps ? [mvpBadge(), ` × ${mvps}`] : "暂无 MVP"),
+            el("span", { class: "pc-meta" }, `K/D/A ${kda(mine).text}`),
+            el("span", { class: "pc-meta" }, `GPM ${rounded(averageOf(mine, "gpm"))}`)));
+      })(),
       positionChart(games)));
     if (open) card.append(playerDetail(games, matches));
     grid.append(card);
@@ -644,6 +808,7 @@ async function load() {
     }
     Object.assign(state.names, league.player_names || {});
     state.matches = summaries.matches || [];
+    computeScores();
     if (!state.matches.length) {
       document.querySelector("#statsStatus").textContent = "还没有可统计的比赛。";
       return;

@@ -5,7 +5,7 @@ Dota 2 内战联赛 19224 的公开战绩看板。
 - 按时间范围统计玩家胜、负、总场数与胜率
 - 只统计 2026-09-13（JST）起的比赛。截至 2026-11-26 出场过的选手为本队选手，此后的比赛至少要有一名本队选手才计入，计入后其中的新选手也成为本队选手。只在 9 月 13 日前出场的为隔壁选手。所有页面只使用计入的比赛
 - 用二维矩阵显示两名玩家的共同场数与组队胜率
-- [数据页](https://bcszsz.github.io/ustc-dota2-hall-of-fame/stats.html)分比赛、英雄与装备、选手三个标签。采集时把每场摘要写入 `site/data/matches.json`，经济曲线等明细写入 `site/data/matches/{id}.json`，英雄（中文名见 `hero_names_zh.json`）和装备常量写入 `site/data/constants.json`，英雄和用到的装备图片压缩成 WebP 存进 `site/img/`。选手卡片的对线结果按该路双方 10 分钟经济总和比较，领先 10% 以上为优。OpenDota 尚未解析录像的比赛记在 `site/data/pending.json`，按 1、2、4、8、8…小时由哨兵触发重查，7 天后放弃
+- [数据页](https://bcszsz.github.io/ustc-dota2-hall-of-fame/stats.html)分比赛、英雄与装备、选手三个标签。采集时把每场摘要写入 `site/data/matches.json`，经济曲线等明细写入 `site/data/matches/{id}.json`，英雄（中文名见 `hero_names_zh.json`）和装备常量写入 `site/data/constants.json`，英雄和用到的装备图片压缩成 WebP 存进 `site/img/`。选手卡片的对线结果按该路双方 10 分钟经济总和比较，领先 10% 以上为优。综合评分是六项能力百分位的平均（OpenDota 同英雄百分位，团战参与和辅助视野用联赛内百分位），每场最高者为 MVP；选手标签顶部有单场纪录墙。OpenDota 尚未解析录像的比赛记在 `site/data/pending.json`，按 1、2、4、8、8…小时由哨兵触发重查，7 天后放弃
 - 每 10 分钟由 `watch.yml` 检查 OpenDota 是否列出新比赛，有新比赛才触发增量采集（只抓新比赛）。每天 JST 10:00 另做一次完整刷新（昵称、段位、最近 5 场），并部署到 GitHub Pages
 - 默认使用匿名免费接口；匿名日额度耗尽后才使用可选的 `OPENDOTA_API_KEY`
 

@@ -176,3 +176,17 @@ def test_ensure_images_saves_small_webp_once(tmp_path: Path) -> None:
 
     assert sorted(requested) == ["/am.png", "/blink.png"]
     assert Image.open(tmp_path / "img" / "heroes" / "1.webp").size == (128, 72)
+
+
+def test_summary_keeps_benchmark_percentiles_and_support_stats() -> None:
+    raw = raw_match(7, parsed=True)
+    raw["players"][0].update(
+        benchmarks={"gold_per_min": {"raw": 500, "pct": 0.815}, "deaths_per_min": {"raw": 0.1, "pct": 0.2}},
+        teamfight_participation=0.71234, obs_placed=6, sen_placed=4, camps_stacked=3, stuns=12.345,
+    )
+
+    player = summarise(raw, build_constants(HEROES, ITEMS))["players"][0]
+
+    assert player["bm"] == {"gpm": 82, "death": 20}
+    assert (player["tf"], player["obs"], player["sen"], player["stacks"], player["stuns"]) == (0.712, 6, 4, 3, 12.3)
+    assert summarise(raw_match(8, parsed=False), build_constants(HEROES, ITEMS))["players"][0]["bm"] is None

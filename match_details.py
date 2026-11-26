@@ -12,10 +12,16 @@ import httpx
 from PIL import Image
 
 # Bump when summaries gain fields; older summaries are refetched once.
-SUMMARY_VERSION = 2
+SUMMARY_VERSION = 3
 IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
 HERO_IMAGE_SIZE = (128, 72)
 ITEM_IMAGE_SIZE = (66, 48)
+# OpenDota benchmark percentiles against public matches on the same hero (0-100).
+BENCHMARKS = {
+    "gpm": "gold_per_min", "xpm": "xp_per_min", "lhm": "last_hits_per_min",
+    "hdm": "hero_damage_per_min", "td": "tower_damage", "death": "deaths_per_min",
+    "heal": "hero_healing_per_min", "kpm": "kills_per_min", "apm": "assists_per_min",
+}
 # A lane is won or lost when one side's 10-minute gold in that lane leads by at least 10%.
 LANE_EDGE = 0.1
 HERO_NAMES_ZH = Path(__file__).with_name("hero_names_zh.json")
@@ -109,6 +115,17 @@ def lane_results(players: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
     return results
 
 
+def _benchmarks(raw: Any) -> dict[str, int] | None:
+    if not isinstance(raw, dict):
+        return None
+    result = {
+        key: round(raw[source]["pct"] * 100)
+        for key, source in BENCHMARKS.items()
+        if isinstance(raw.get(source), dict) and isinstance(raw[source].get("pct"), (int, float))
+    }
+    return result or None
+
+
 def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
     items = constants.get("items", {})
     key_by_id = {item["id"]: key for key, item in items.items()}
@@ -168,6 +185,13 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
                 "xp10": _at_minute(player.get("xp_t"), 10),
                 "lane": lanes.get(player.get("player_slot"), {}).get("lane"),
                 "lane_diff": lanes.get(player.get("player_slot"), {}).get("lane_diff"),
+                "bm": _benchmarks(player.get("benchmarks")),
+                "tf": round(player["teamfight_participation"], 3)
+                if isinstance(player.get("teamfight_participation"), (int, float)) else None,
+                "obs": player.get("obs_placed"),
+                "sen": player.get("sen_placed"),
+                "stacks": player.get("camps_stacked"),
+                "stuns": round(player["stuns"], 1) if isinstance(player.get("stuns"), (int, float)) else None,
             }
         )
     return {
