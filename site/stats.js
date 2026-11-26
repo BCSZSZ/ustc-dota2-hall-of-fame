@@ -545,7 +545,7 @@ const TITLES = [
     (m.max_lead?.[isRadiant(p) ? "radiant" : "dire"] ?? 0) >= 4000 && rankIn(teamOf(m, p), p, (o) => o.d ?? 0) === 1, pick: (m, p) => p.d },
   { name: "打心底里佩服", tip: "赢了的 1 号位，输出不到本队 20%，参与击杀不到 50%", test: (m, p) => won(m, p) && p.pos === 1 &&
     damageShare(m, p) < 0.2 && killShare(m, p) < 0.5, pick: (m, p) => -damageShare(m, p) },
-  { name: "屠龙", tip: "本局拿过不朽之守护", test: (m, p) => p.aegis >= 1, pick: (m, p) => p.aegis },
+  { name: "抢盾", tip: "从对面手里抢走了不朽之守护", test: (m, p) => p.aegis_stolen >= 1, pick: (m, p) => p.aegis_stolen },
   { name: "拆", tip: "全场建筑伤害第一，且不少于 5000", test: (m, p) => topOf(m, p, (o) => o.td, 5000), pick: (m, p) => p.td },
   { name: "壕", tip: "全场净值第一", test: (m, p) => topOf(m, p, (o) => o.nw), pick: (m, p) => p.nw },
   { name: "就是干", tip: "全场英雄伤害第一", test: (m, p) => topOf(m, p, (o) => o.hd), pick: (m, p) => p.hd },
@@ -576,7 +576,7 @@ function assignTitles(match) {
 const TITLE_TIPS = Object.fromEntries(TITLES.map(({ name, tip }) => [name, tip]));
 // Gold for honours, blue for "best in the match" stats, red for roasts.
 const TITLE_KIND = {
-  SMVP: "honor", MVP: "honor", 暴走: "honor", 超神: "honor", 屠龙: "honor", 稳: "honor",
+  SMVP: "honor", MVP: "honor", 暴走: "honor", 超神: "honor", 抢盾: "honor", 稳: "honor",
   拆: "stat", 壕: "stat", 就是干: "stat", 奶: "stat", 肉: "stat", 控: "stat", 眼: "stat", 一血: "stat",
   钢丝C: "roast", 刷了送: "roast", 我的: "roast", 打心底里佩服: "roast", 躺: "roast", 僵: "roast", 浪: "roast",
 };

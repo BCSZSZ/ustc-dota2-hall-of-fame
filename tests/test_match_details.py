@@ -215,8 +215,8 @@ def test_talent_picks_record_first_choice_per_tier() -> None:
 def test_summary_keeps_title_inputs() -> None:
     raw = raw_match(7, parsed=True)
     raw["radiant_gold_adv"] = [0, -1500, 4200, -300]
-    raw["objectives"] = [{"type": "CHAT_MESSAGE_AEGIS", "player_slot": 0, "time": 1200},
-                         {"type": "CHAT_MESSAGE_AEGIS", "player_slot": 0, "time": 2400}]
+    raw["objectives"] = [{"type": "CHAT_MESSAGE_AEGIS", "player_slot": 1, "time": 1200},
+                         {"type": "CHAT_MESSAGE_AEGIS_STOLEN", "player_slot": 0, "time": 2400}]
     raw["players"][0].update(
         multi_kills={"2": 3, "4": 1}, kill_streaks={"3": 2, "10": 1}, firstblood_claimed=1,
         damage_taken={"npc_dota_hero_axe": 900, "npc_dota_creep_goodguys_melee": 400, "npc_dota_hero_lion": 100},
@@ -226,5 +226,5 @@ def test_summary_keeps_title_inputs() -> None:
     player, other = summary["players"][0], summary["players"][1]
 
     assert summary["max_lead"] == {"radiant": 4200, "dire": 1500}
-    assert (player["multi"], player["streak"], player["taken"], player["fb"], player["aegis"]) == (4, 10, 1000, 1, 2)
-    assert (other["multi"], other["streak"], other["taken"], other["fb"], other["aegis"]) == (0, 0, None, 0, 0)
+    assert (player["multi"], player["streak"], player["taken"], player["fb"], player["aegis_stolen"]) == (4, 10, 1000, 1, 1)
+    assert (other["multi"], other["streak"], other["taken"], other["fb"], other["aegis_stolen"]) == (0, 0, None, 0, 0)

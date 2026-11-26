@@ -12,7 +12,7 @@ import httpx
 from PIL import Image
 
 # Bump when summaries or detail files gain fields; older matches are refetched once.
-SUMMARY_VERSION = 6
+SUMMARY_VERSION = 7
 IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
 HERO_IMAGE_SIZE = (128, 72)
 ITEM_IMAGE_SIZE = (66, 48)
@@ -192,10 +192,10 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
 
     lanes = lane_results(raw.get("players") or [])
     talents_by_hero = constants.get("talents", {})
-    aegis_by_slot: dict[Any, int] = {}
+    stolen_by_slot: dict[Any, int] = {}
     for objective in raw.get("objectives") or []:
-        if objective.get("type") == "CHAT_MESSAGE_AEGIS":
-            aegis_by_slot[objective.get("player_slot")] = aegis_by_slot.get(objective.get("player_slot"), 0) + 1
+        if objective.get("type") == "CHAT_MESSAGE_AEGIS_STOLEN":
+            stolen_by_slot[objective.get("player_slot")] = stolen_by_slot.get(objective.get("player_slot"), 0) + 1
     players = []
     for player in sorted(raw.get("players") or [], key=lambda item: item.get("player_slot", 0)):
         built: dict[str, int | None] = {}
@@ -259,7 +259,7 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
                     if source.startswith("npc_dota_hero_") and isinstance(value, (int, float))
                 ) if player.get("damage_taken") else None,
                 "fb": int(bool(player.get("firstblood_claimed"))),
-                "aegis": aegis_by_slot.get(player.get("player_slot"), 0),
+                "aegis_stolen": stolen_by_slot.get(player.get("player_slot"), 0),
             }
         )
     return {
