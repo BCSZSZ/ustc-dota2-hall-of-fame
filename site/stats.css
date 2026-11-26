@@ -241,13 +241,17 @@
   background: var(--gold-700);
 }
 
+/* The cell stays a table cell so its row lines up; the icons wrap inside it. */
 .scoreboard td.items {
+  min-width: 150px;
+  max-width: 170px;
+}
+
+.scoreboard .item-list {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 3px;
-  min-width: 150px;
-  max-width: 170px;
 }
 
 /* 14 columns: a smaller font and wrapped items keep the scoreboard within a desktop-width page. */

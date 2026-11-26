@@ -113,11 +113,11 @@ function scoreboard(match, radiant) {
       el("td", { class: "num" }, (player.hh ?? 0).toLocaleString()),
       el("td", { class: "num" }, player.gold10 === null || player.gold10 === undefined ? "—" : player.gold10.toLocaleString()),
       el("td", { class: "num" }, player.lane ? el("span", { class: `lane lane-${player.lane}` }, LANE_TEXT[player.lane]) : "—"),
-      el("td", { class: "items" },
+      el("td", { class: "items" }, el("span", { class: "item-list" },
         player.items.map(itemIcon),
         player.neutral ? el("span", { class: "neutral" }, itemIcon(player.neutral)) : null,
         player.scepter ? el("span", { class: "buff", title: "已吃神杖" }, "杖") : null,
-        player.shard ? el("span", { class: "buff", title: "已吃魔晶" }, "晶") : null),
+        player.shard ? el("span", { class: "buff", title: "已吃魔晶" }, "晶") : null)),
     ));
   return el("div", { class: `team ${radiant ? "radiant" : "dire"}` },
     el("h3", {}, radiant ? "天辉" : "夜魇", el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
