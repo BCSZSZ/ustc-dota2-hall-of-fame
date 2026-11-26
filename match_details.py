@@ -12,7 +12,7 @@ import httpx
 from PIL import Image
 
 # Bump when summaries or detail files gain fields; older matches are refetched once.
-SUMMARY_VERSION = 5
+SUMMARY_VERSION = 6
 IMAGE_CDN = "https://cdn.cloudflare.steamstatic.com"
 HERO_IMAGE_SIZE = (128, 72)
 ITEM_IMAGE_SIZE = (66, 48)
@@ -162,6 +162,13 @@ def _talent_picks(player: dict[str, Any], talents: list[dict[str, Any]]) -> list
     return [picks[tier] for tier in sorted(picks)]
 
 
+def _largest_key(counts: Any) -> int:
+    """Largest multi-kill size or kill streak recorded, 0 when there is none."""
+    if not isinstance(counts, dict):
+        return 0
+    return max((int(key) for key in counts if str(key).isdigit()), default=0)
+
+
 def _benchmarks(raw: Any) -> dict[str, int] | None:
     if not isinstance(raw, dict):
         return None
@@ -185,6 +192,10 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
 
     lanes = lane_results(raw.get("players") or [])
     talents_by_hero = constants.get("talents", {})
+    aegis_by_slot: dict[Any, int] = {}
+    for objective in raw.get("objectives") or []:
+        if objective.get("type") == "CHAT_MESSAGE_AEGIS":
+            aegis_by_slot[objective.get("player_slot")] = aegis_by_slot.get(objective.get("player_slot"), 0) + 1
     players = []
     for player in sorted(raw.get("players") or [], key=lambda item: item.get("player_slot", 0)):
         built: dict[str, int | None] = {}
@@ -241,6 +252,14 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
                 "stacks": player.get("camps_stacked"),
                 "stuns": round(player["stuns"], 1) if isinstance(player.get("stuns"), (int, float)) else None,
                 "talents": _talent_picks(player, talents_by_hero.get(str(player.get("hero_id")), [])),
+                "multi": _largest_key(player.get("multi_kills")),
+                "streak": _largest_key(player.get("kill_streaks")),
+                "taken": sum(
+                    value for source, value in (player.get("damage_taken") or {}).items()
+                    if source.startswith("npc_dota_hero_") and isinstance(value, (int, float))
+                ) if player.get("damage_taken") else None,
+                "fb": int(bool(player.get("firstblood_claimed"))),
+                "aegis": aegis_by_slot.get(player.get("player_slot"), 0),
             }
         )
     return {
@@ -252,6 +271,11 @@ def summarise(raw: dict[str, Any], constants: dict[str, Any]) -> dict[str, Any]:
         "radiant_score": raw.get("radiant_score"),
         "dire_score": raw.get("dire_score"),
         "parse": "parsed" if is_parsed(raw) else "pending",
+        # Largest gold lead each side ever held, from the Radiant gold-advantage curve.
+        "max_lead": {
+            "radiant": max([0, *(raw.get("radiant_gold_adv") or [])]),
+            "dire": -min([0, *(raw.get("radiant_gold_adv") or [])]),
+        },
         "picks_bans": [
             [entry.get("order"), int(bool(entry.get("is_pick"))), entry.get("team"), entry.get("hero_id")]
             for entry in sorted(raw.get("picks_bans") or [], key=lambda item: item.get("order", 0))

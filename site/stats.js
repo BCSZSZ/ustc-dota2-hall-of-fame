@@ -228,7 +228,7 @@ function scoreboard(match, radiant) {
   const teamWon = radiant === match.radiant_win;
   const rows = players.map((player) =>
     el("tr", {},
-      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge() : null),
+      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(player.relative >= SMVP_MARGIN) : null),
       el("td", {}, heroLabel(player.hero)),
       el("td", { class: "num" }, el("b", {}, scoreText(player.score))),
       el("td", { class: "num" }, player.pos ? `${player.pos} 号位` : "—"),
@@ -307,22 +307,15 @@ function talentTree(player) {
     [4, 3, 2, 1].map((tier) => el("i", { class: picks.has(tier) ? (picks.get(tier).both ? "on both" : "on") : "" }, TALENT_LEVELS[tier])));
 }
 
-// Titles shown on the match card. The full set is being designed; MVP is live.
-function achievements(match, player) {
-  const list = [];
-  if (isMvp(match, player)) list.push(mvpBadge());
-  return list;
-}
-
 function playerRow(match, player) {
   const kills = player.k ?? 0;
   return el("div", { class: `player-row${isMvp(match, player) ? " is-mvp" : ""}` },
     heroIcon(player.hero),
     el("span", { class: "pr-who" },
       el("span", { class: "pr-name" }, playerLink(player.account_id)),
-      el("span", { class: "pr-sub" }, `${player.pos ? `${player.pos}号位 · ` : ""}${hero(player.hero).name}`, achievements(match, player))),
+      el("span", { class: "pr-sub" }, `${player.pos ? `${player.pos}号位 · ` : ""}${hero(player.hero).name}`, (player.titles || []).map(titleChip))),
     el("span", { class: "pr-kda", title: "击杀 / 死亡 / 助攻" }, `${kills}/${player.d ?? 0}/${player.a ?? 0}`),
-    el("span", { class: "pr-score", title: "综合评分" }, scoreText(player.score)),
+    el("span", { class: "pr-score", title: "综合评分" }, gradeBadge(player), scoreText(player.score)),
     el("span", { class: "pr-nw", title: `净值 ${(player.nw ?? 0).toLocaleString()} · GPM ${player.gpm ?? "—"}` },
       player.nw ? `${(player.nw / 1000).toFixed(1)}k` : "—"),
     el("span", { class: "pr-items" },
@@ -452,16 +445,26 @@ function renderHeroes(panel, matches) {
 
 // ---------- 综合评分 ----------
 
+// Six 0-100 dimensions. Cores and supports read different stats on each axis, because
+// in-house supports give up farm: compared with public players on the same hero they sit
+// near the 30th percentile for gold, XP and last hits but near normal for assists and damage.
 const DIMENSIONS = [
-  { key: "econ", label: "经济" },
-  { key: "farm", label: "发育/视野" },
-  { key: "dmg", label: "输出" },
-  { key: "push", label: "推进" },
-  { key: "surv", label: "生存" },
-  { key: "team", label: "参与" },
+  { key: "econ", label: "经济/助攻", tip: "核心：GPM；辅助：每分钟助攻（OpenDota 同英雄百分位）" },
+  { key: "farm", label: "正补/视野", tip: "核心：每分钟正补（OpenDota 同英雄百分位）；辅助：插眼数在联赛辅助中的百分位" },
+  { key: "dmg", label: "输出", tip: "每分钟英雄伤害（OpenDota 同英雄百分位）" },
+  { key: "push", label: "推进/控制", tip: "核心：建筑伤害（OpenDota 同英雄百分位）；辅助：控制时长在联赛辅助中的百分位" },
+  { key: "surv", label: "生存", tip: "每分钟死亡，死得越少越高（OpenDota 同英雄百分位）" },
+  { key: "kill", label: "击杀", tip: "每分钟击杀（OpenDota 同英雄百分位）" },
 ];
+// The league's own role gap is only trusted in proportion to n / (n + ROLE_SHRINK) games.
+const ROLE_SHRINK = 50;
+const SMVP_MARGIN = 30;
+const GRADES = [["S", 80], ["A", 65], ["B", 50], ["C", 35], ["D", -Infinity]];
+const TITLE_LIMIT = 4;
 
 const isSupport = (player) => player.pos === 4 || player.pos === 5;
+const wardsOf = (player) => (Number.isFinite(player.obs) ? player.obs + (player.sen ?? 0) : null);
+const gradeOf = (score) => (Number.isFinite(score) ? GRADES.find(([, floor]) => score >= floor)[0] : null);
 
 function meanOf(values) {
   const list = values.filter(Number.isFinite);
@@ -479,45 +482,110 @@ function percentileRank(value, sorted) {
   return Math.round(((below + equal / 2) / sorted.length) * 100);
 }
 
-// Six 0-100 dimensions per game: OpenDota's same-hero percentiles where they exist,
-// league-internal percentiles for team-fight participation and for supports' vision work.
 function computeScores() {
   const players = state.matches.flatMap((match) => match.players);
-  const sorted = (rows, pick) => rows.map(pick).filter(Number.isFinite).sort((a, b) => a - b);
-  const wardsOf = (player) => (Number.isFinite(player.obs) ? player.obs + (player.sen ?? 0) : null);
   const supports = players.filter(isSupport);
-  const pools = {
-    tf: sorted(players, (player) => player.tf),
-    wards: sorted(supports, wardsOf),
-    stacks: sorted(supports, (player) => player.stacks),
-    stuns: sorted(supports, (player) => player.stuns),
-  };
-  for (const match of state.matches) {
-    for (const player of match.players) {
-      if (!player.bm) {
-        player.dims = null;
-        player.score = null;
-        continue;
-      }
-      player.dims = {
-        econ: player.bm.gpm,
-        farm: isSupport(player)
-          ? meanOf([percentileRank(wardsOf(player), pools.wards), percentileRank(player.stacks, pools.stacks), percentileRank(player.stuns, pools.stuns)])
-          : meanOf([player.bm.lhm, player.bm.xpm]),
-        dmg: player.bm.hdm,
-        push: player.bm.td,
-        surv: player.bm.death,
-        team: percentileRank(player.tf, pools.tf),
-      };
-      player.score = meanOf(Object.values(player.dims));
+  const sorted = (rows, pick) => rows.map(pick).filter(Number.isFinite).sort((a, b) => a - b);
+  const pools = { wards: sorted(supports, wardsOf), stuns: sorted(supports, (player) => player.stuns) };
+  for (const player of players) {
+    const bm = player.bm;
+    if (!bm) {
+      player.dims = null;
+      player.base = null;
+      continue;
     }
-    const best = match.players.filter((player) => Number.isFinite(player.score)).sort((a, b) => b.score - a.score)[0];
+    const support = isSupport(player);
+    player.dims = {
+      econ: support ? bm.apm : bm.gpm,
+      farm: support ? percentileRank(wardsOf(player), pools.wards) : bm.lhm,
+      dmg: bm.hdm,
+      push: support ? percentileRank(player.stuns, pools.stuns) : bm.td,
+      surv: bm.death,
+      kill: bm.kpm,
+    };
+    player.base = meanOf(Object.values(player.dims));
+  }
+  const scored = players.filter((player) => Number.isFinite(player.base));
+  const overall = meanOf(scored.map((player) => player.base));
+  const roles = new Map();
+  for (const pos of [1, 2, 3, 4, 5]) {
+    const list = scored.filter((player) => player.pos === pos).map((player) => player.base);
+    if (list.length) roles.set(pos, { mean: meanOf(list), shift: (list.length / (list.length + ROLE_SHRINK)) * (meanOf(list) - overall) });
+  }
+  for (const player of players) {
+    const role = roles.get(player.pos);
+    player.score = Number.isFinite(player.base) ? player.base - (role?.shift ?? 0) : null;
+    player.relative = Number.isFinite(player.base) ? player.base - (role?.mean ?? overall) : null;
+    player.grade = gradeOf(player.score);
+  }
+  for (const match of state.matches) {
+    const winners = match.players.filter((player) => won(match, player) && Number.isFinite(player.relative));
+    const best = winners.sort((a, b) => b.relative - a.relative)[0];
     match.mvp = best ? best.slot : null;
+    assignTitles(match);
   }
 }
 
 const isMvp = (match, player) => match.mvp === player.slot;
 const scoreText = (value) => (Number.isFinite(value) ? String(Math.round(value)) : "—");
+const gradeBadge = (player) => (player.grade
+  ? el("span", { class: `grade grade-${player.grade}`, title: `评级 ${player.grade}：S ≥ 80，A ≥ 65，B ≥ 50，C ≥ 35，其余 D` }, player.grade)
+  : null);
+
+// ---------- 本局称号 ----------
+
+const teamOf = (match, player) => match.players.filter((other) => isRadiant(other) === isRadiant(player));
+const rankIn = (group, player, value) => 1 + group.filter((other) => value(other) > value(player)).length;
+const damageShare = (match, player) => (player.hd ?? 0) / Math.max(1, teamOf(match, player).reduce((sum, other) => sum + (other.hd ?? 0), 0));
+const killShare = (match, player) => ((player.k ?? 0) + (player.a ?? 0)) / Math.max(1, isRadiant(player) ? match.radiant_score : match.dire_score);
+const kdaOf = (player) => ((player.k ?? 0) + (player.a ?? 0)) / Math.max(1, player.d ?? 0);
+const topOf = (match, player, value, floor = 0) => (value(player) ?? -Infinity) > floor - 1e-9 && Number.isFinite(value(player)) &&
+  rankIn(match.players.filter((other) => Number.isFinite(value(other))), player, value) === 1;
+
+// In priority order. Each title goes to at most one player per match: the most typical
+// qualifier by `pick`, or the next one if that player already holds four titles.
+const TITLES = [
+  { name: "SMVP", tip: "胜方中评分高出同号位平均最多，且高出 30 分以上", test: (m, p) => isMvp(m, p) && p.relative >= SMVP_MARGIN, pick: (m, p) => p.relative },
+  { name: "MVP", tip: "胜方中评分高出同号位平均最多的人", test: (m, p) => isMvp(m, p) && p.relative < SMVP_MARGIN, pick: (m, p) => p.relative },
+  { name: "暴走", tip: "一波收下 4 个及以上人头", test: (m, p) => p.multi >= 4, pick: (m, p) => p.multi * 100 + p.k },
+  { name: "超神", tip: "最高连杀达到 10", test: (m, p) => p.streak >= 10, pick: (m, p) => p.streak },
+  { name: "钢丝C", tip: "输了的 1 号位，死了 9 次以上", test: (m, p) => !won(m, p) && p.pos === 1 && p.d >= 9, pick: (m, p) => p.d },
+  { name: "刷了送", tip: "输了的 2、3 号位，经济本队前二，却死了 8 次以上", test: (m, p) => !won(m, p) && (p.pos === 2 || p.pos === 3) &&
+    rankIn(teamOf(m, p), p, (o) => o.nw ?? 0) <= 2 && p.d >= 8, pick: (m, p) => p.d },
+  { name: "我的", tip: "我的我的：本队曾领先 4000 以上却输了，本人是本队死得最多的", test: (m, p) => !won(m, p) &&
+    (m.max_lead?.[isRadiant(p) ? "radiant" : "dire"] ?? 0) >= 4000 && rankIn(teamOf(m, p), p, (o) => o.d ?? 0) === 1, pick: (m, p) => p.d },
+  { name: "打心底里佩服", tip: "赢了的 1 号位，输出不到本队 20%，参与击杀不到 50%", test: (m, p) => won(m, p) && p.pos === 1 &&
+    damageShare(m, p) < 0.2 && killShare(m, p) < 0.5, pick: (m, p) => -damageShare(m, p) },
+  { name: "屠龙", tip: "本局拿过不朽之守护", test: (m, p) => p.aegis >= 1, pick: (m, p) => p.aegis },
+  { name: "拆", tip: "全场建筑伤害第一，且不少于 5000", test: (m, p) => topOf(m, p, (o) => o.td, 5000), pick: (m, p) => p.td },
+  { name: "壕", tip: "全场净值第一", test: (m, p) => topOf(m, p, (o) => o.nw), pick: (m, p) => p.nw },
+  { name: "就是干", tip: "全场英雄伤害第一", test: (m, p) => topOf(m, p, (o) => o.hd), pick: (m, p) => p.hd },
+  { name: "奶", tip: "全场治疗第一，且不少于 3000", test: (m, p) => topOf(m, p, (o) => o.hh, 3000), pick: (m, p) => p.hh },
+  { name: "肉", tip: "全场承受英雄伤害第一", test: (m, p) => topOf(m, p, (o) => o.taken, 1), pick: (m, p) => p.taken },
+  { name: "控", tip: "全场控制时长第一", test: (m, p) => topOf(m, p, (o) => o.stuns, 0.1), pick: (m, p) => p.stuns },
+  { name: "眼", tip: "全场插眼最多", test: (m, p) => topOf(m, p, wardsOf, 1), pick: (m, p) => wardsOf(p) },
+  { name: "稳", tip: "死亡不超过 3 次，且 KDA 至少 5", test: (m, p) => p.d <= 3 && kdaOf(p) >= 5, pick: (m, p) => kdaOf(p) * 100 - p.d },
+  { name: "浪", tip: "击杀至少 7 次，死亡也至少 8 次", test: (m, p) => p.d >= 8 && p.k >= 7, pick: (m, p) => p.d * 100 + p.k },
+  { name: "躺", tip: "赢了，评分在本队倒数前二且低于 50", test: (m, p) => won(m, p) && Number.isFinite(p.score) && p.score < 50 &&
+    rankIn(teamOf(m, p).filter((o) => Number.isFinite(o.score)), p, (o) => o.score) >= 4, pick: (m, p) => -p.relative },
+  { name: "僵", tip: "团战参与率不到 50%，输出也不到本队 15%", test: (m, p) => Number.isFinite(p.tf) && p.tf < 0.5 && damageShare(m, p) < 0.15,
+    pick: (m, p) => -(p.tf + damageShare(m, p)) },
+  { name: "一血", tip: "拿下一血", test: (m, p) => p.fb === 1, pick: () => 0 },
+];
+
+function assignTitles(match) {
+  for (const player of match.players) player.titles = [];
+  for (const title of TITLES) {
+    const candidates = match.players.filter((player) => title.test(match, player))
+      .sort((a, b) => title.pick(match, b) - title.pick(match, a));
+    const winner = candidates.find((player) => player.titles.length < TITLE_LIMIT &&
+      !(title.name === "MVP" && player.titles.includes("SMVP")));
+    if (winner) winner.titles.push(title.name);
+  }
+}
+
+const TITLE_TIPS = Object.fromEntries(TITLES.map(({ name, tip }) => [name, tip]));
+const titleChip = (name) => el("span", { class: `title-chip${name.endsWith("MVP") ? " mvp" : ""}`, title: TITLE_TIPS[name] }, `【${name}】`);
 
 function averageDims(players) {
   return Object.fromEntries(DIMENSIONS.map(({ key }) => [key, meanOf(players.map((player) => player.dims?.[key]))]));
@@ -544,7 +612,7 @@ function radar(values, { size = 132, compare = null } = {}) {
   return figure;
 }
 
-const mvpBadge = () => el("span", { class: "mvp", title: "本场综合评分最高" }, "MVP");
+const mvpBadge = (smvp = false) => el("span", { class: "mvp", title: TITLE_TIPS[smvp ? "SMVP" : "MVP"] }, smvp ? "SMVP" : "MVP");
 
 // ---------- 纪录墙 ----------
 
@@ -635,7 +703,7 @@ function positionChart(games) {
 function dimensionBars(dims, leagueDims) {
   return el("div", { class: "pc-dims" }, DIMENSIONS.map(({ key, label }) =>
     el("div", { class: "pc-dim" },
-      el("span", { class: "pc-dim-label" }, label),
+      el("span", { class: "pc-dim-label", title: DIMENSIONS.find((dim) => dim.key === key).tip }, label),
       el("span", { class: "dim-bar" },
         el("i", { style: `width:${dims[key] ?? 0}%` }),
         Number.isFinite(leagueDims[key]) ? el("b", { style: `left:${leagueDims[key]}%`, title: `联赛平均 ${scoreText(leagueDims[key])}` }) : null),
@@ -701,12 +769,13 @@ function playerDetail(games, matches) {
       { key: "gpm", label: "GPM", value: (row) => averageOf(row.games, "gpm") ?? -1, render: (row) => rounded(averageOf(row.games, "gpm")), align: "num" },
     ], [...heroes.values()], "games")),
     section("比赛记录", null, el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
-      el("thead", {}, el("tr", {}, ["结果", "时间", "英雄", "评分", "位置", "K/D/A", "10 分钟经济", "对线", ""].map((label) => el("th", { scope: "col" }, label)))),
+      el("thead", {}, el("tr", {}, ["结果", "时间", "英雄", "评分", "称号", "位置", "K/D/A", "10 分钟经济", "对线", ""].map((label) => el("th", { scope: "col" }, label)))),
       el("tbody", {}, [...games].reverse().map((game) => el("tr", {},
         el("td", {}, el("span", { class: game.won ? "result win" : "result" }, game.won ? "胜" : "负")),
         el("td", {}, formatDate(game.match.start_time)),
         el("td", {}, heroLabel(game.player.hero)),
-        el("td", { class: "num" }, scoreText(game.player.score), isMvp(game.match, game.player) ? mvpBadge() : null),
+        el("td", { class: "num" }, gradeBadge(game.player), scoreText(game.player.score)),
+        el("td", {}, (game.player.titles || []).map(titleChip)),
         el("td", { class: "num" }, game.player.pos ? `${game.player.pos} 号位` : "—"),
         el("td", { class: "num" }, `${game.player.k}/${game.player.d}/${game.player.a}`),
         el("td", { class: "num" }, rounded(game.player.gold10 ?? null)),
@@ -726,7 +795,7 @@ function renderPlayers(panel, matches) {
   const roster = [...byPlayer.entries()].sort((a, b) =>
     b[1].length - a[1].length || playerName(a[0]).localeCompare(playerName(b[0]), "zh-CN"));
   panel.append(recordWall(matches));
-  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。综合评分是六项能力百分位的平均，每场最高者为 MVP：经济、输出、推进、生存，以及核心的发育（正补、经验）取 OpenDota 与全网同英雄玩家相比的百分位；4、5 号位的发育换成视野（插眼、堆野、控制时长在联赛辅助中的百分位）；参与为团战参与率在联赛中的百分位。雷达图和能力条里的虚线、竖线为联赛平均。号位柱子高度为场次，金色部分为胜场，号位为 OpenDota 根据录像的估计。点开卡片查看对线、场均数据、英雄池和比赛记录。`));
+  panel.append(section("选手", `所选时间内出场的 ${roster.length} 名选手。综合评分是六项能力的平均，核心和辅助看的数据不同（悬停能力名可看具体口径），再按号位做有限修正；评级 S ≥ 80、A ≥ 65、B ≥ 50、C ≥ 35，其余为 D。MVP 是胜方中评分高出同号位平均最多的人，高出 30 分以上为 SMVP。雷达图和能力条里的虚线、竖线为联赛平均。号位柱子高度为场次，金色部分为胜场，号位为 OpenDota 根据录像的估计。点开卡片查看对线、场均数据、英雄池和比赛记录。`));
   const leagueDims = averageDims(matches.flatMap((match) => match.players));
   const grid = el("div", { class: "player-grid" });
   for (const [accountId, games] of roster) {
@@ -745,7 +814,11 @@ function renderPlayers(panel, matches) {
       },
       (() => {
         const scored = mine.filter((player) => Number.isFinite(player.score));
-        const mvps = games.filter((game) => isMvp(game.match, game.player)).length;
+        const titleCounts = new Map();
+        for (const name of mine.flatMap((player) => player.titles || [])) titleCounts.set(name, (titleCounts.get(name) || 0) + 1);
+        const mvps = (titleCounts.get("MVP") || 0) + (titleCounts.get("SMVP") || 0);
+        const average = meanOf(scored.map((player) => player.score));
+        const topTitles = [...titleCounts.entries()].filter(([name]) => !name.endsWith("MVP")).sort((a, b) => b[1] - a[1]).slice(0, 4);
         const lanes = laneSummary(games);
         const dims = averageDims(mine);
         return [
@@ -753,8 +826,11 @@ function renderPlayers(panel, matches) {
             el("strong", { class: "pc-name" }, playerName(accountId)),
             el("span", { class: "pc-record" }, `${record(wins, games.length)} · ${winText(wins, games.length)}`),
             el("span", { class: "pc-score" },
-              el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "" }, scoreText(meanOf(scored.map((player) => player.score)))),
-              el("span", {}, "综合评分", el("br"), mvps ? [mvpBadge(), ` × ${mvps}`] : "暂无 MVP")),
+              el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "" }, scoreText(average)),
+              el("span", {}, "综合评分 ", gradeBadge({ grade: gradeOf(average) }), el("br"),
+                mvps ? [mvpBadge(), ` × ${mvps}`, titleCounts.get("SMVP") ? `（含 SMVP ${titleCounts.get("SMVP")}）` : ""] : "暂无 MVP")),
+            topTitles.length ? el("span", { class: "pc-titles" }, topTitles.map(([name, count]) =>
+              el("span", { class: "title-chip", title: TITLE_TIPS[name] }, `【${name}】×${count}`))) : null,
             el("span", { class: "pc-meta" }, `K/D/A ${kda(mine).text}`),
             el("span", { class: "pc-meta" }, `GPM ${rounded(averageOf(mine, "gpm"))} · 线优 ${lanes.rated ? winText(lanes.win, lanes.rated) : "—"}`)),
           radar(dims, { size: 150, compare: leagueDims }),
