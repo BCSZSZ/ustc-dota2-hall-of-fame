@@ -8,6 +8,8 @@ on:
       - ".github/workflows/pages.yml"
       - "site/**"
       - "collector.py"
+      - "match_details.py"
+      - "hero_names_zh.json"
       - "mmr-api/**"
       - "requirements.txt"
       - "tests/**"
@@ -78,13 +80,13 @@ jobs:
 
       - name: Persist refreshed data
         run: |
-          if git diff --quiet -- site/data/league.json; then
+          git add site/data
+          if git diff --cached --quiet; then
             echo "League data is unchanged."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site/data/league.json
           git commit -m "Refresh league dashboard data"
           for attempt in 1 2 3; do
             git pull --rebase origin main && git push && exit 0

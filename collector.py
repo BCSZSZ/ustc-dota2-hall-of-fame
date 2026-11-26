@@ -13,6 +13,8 @@ from xml.etree import ElementTree
 import httpx
 from dotenv import load_dotenv
 
+from match_details import refresh_match_details
+
 API_BASE_URL = "https://api.opendota.com/api"
 STEAM_COMMUNITY_URL = "https://steamcommunity.com"
 STEAM_ACCOUNT_ID_OFFSET = 76_561_197_960_265_728
@@ -82,7 +84,7 @@ class OpenDotaLeagueClient:
         remaining = 61.0 - (time.time() % 60.0)
         time.sleep(max(2.0, remaining) + random.uniform(0.2, 1.2))
 
-    def _request(self, path: str, *, paid: bool) -> Any:
+    def _request(self, path: str, *, paid: bool, method: str = "GET") -> Any:
         headers: dict[str, str] = {}
         if paid:
             if not self._api_key:
@@ -99,7 +101,7 @@ class OpenDotaLeagueClient:
                     )
                 self._paid_calls += 1
             try:
-                response = self._client.get(path, headers=headers)
+                response = self._client.request(method, path, headers=headers)
             except httpx.RequestError as error:
                 if attempt == 3:
                     raise LeagueCollectionError(
@@ -118,7 +120,7 @@ class OpenDotaLeagueClient:
                 if paid:
                     raise LeagueCollectionError("OpenDota API-key daily limit was exhausted")
                 self._free_exhausted = True
-                return self._request(path, paid=True)
+                return self._request(path, paid=True, method=method)
             if response.status_code >= 500:
                 if attempt == 3:
                     raise LeagueCollectionError(
@@ -139,6 +141,10 @@ class OpenDotaLeagueClient:
 
     def get_json(self, path: str) -> Any:
         return self._request(path, paid=self._free_exhausted)
+
+    def request_parse(self, match_id: int) -> Any:
+        """Ask OpenDota to parse a match replay that has no parsed data yet."""
+        return self._request(f"/request/{match_id}", paid=self._free_exhausted, method="POST")
 
 
 def normalise_match(raw: dict[str, Any], league_id: int) -> dict[str, Any]:
@@ -361,6 +367,7 @@ def collect_league_data(
     client: OpenDotaLeagueClient,
     steam_client: httpx.Client | None = None,
     incremental: bool = False,
+    raw_by_id: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     league = client.get_json(f"/leagues/{league_id}")
     match_ids_raw = client.get_json(f"/leagues/{league_id}/matchIds")
@@ -384,6 +391,8 @@ def collect_league_data(
             raw = client.get_json(f"/matches/{match_id}")
             if not isinstance(raw, dict):
                 raise LeagueCollectionError("invalid match payload")
+            if raw_by_id is not None:
+                raw_by_id[match_id] = raw
             match = normalise_match(raw, league_id)
             if _has_complete_roster(match):
                 matches[match_id] = match
@@ -495,6 +504,7 @@ def main(argv: list[str] | None = None) -> int:
         ) as client,
         httpx.Client(base_url=STEAM_COMMUNITY_URL, timeout=5.0) as steam_client,
     ):
+        raw_by_id: dict[int, dict[str, Any]] = {}
         payload = collect_league_data(
             league_id=args.league_id,
             output_path=args.output,
@@ -502,8 +512,21 @@ def main(argv: list[str] | None = None) -> int:
             client=client,
             steam_client=None if args.incremental else steam_client,
             incremental=args.incremental,
+            raw_by_id=raw_by_id,
+        )
+        details = refresh_match_details(
+            data_dir=args.output.parent,
+            counted=payload["matches"],
+            raw_by_id=raw_by_id,
+            client=client,
+            error_type=LeagueCollectionError,
+            refresh_constants=not args.incremental,
         )
     write_snapshot(args.output, payload)
+    print(
+        f"Match details: {details['summaries']} summaries, {details['fetched']} fetched, "
+        f"{details['pending']} awaiting OpenDota parsing"
+    )
     metadata = payload["metadata"]
     print(
         f"League {args.league_id}: wrote {metadata['matches_available']} matches "

@@ -712,6 +712,16 @@ tr:nth-child(3) .rank-badge {
   font-weight: 800;
 }
 
+.player-name a {
+  color: inherit;
+  text-decoration-color: rgba(189, 0, 29, 0.35);
+  text-underline-offset: 4px;
+}
+
+.player-name a:hover {
+  color: var(--red-700);
+}
+
 .account-id {
   color: var(--muted);
   font-family: Consolas, "SFMono-Regular", monospace;

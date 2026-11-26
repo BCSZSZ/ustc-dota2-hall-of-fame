@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#970018" />
+    <meta name="description" content="科大 Dota 2 内战的比赛概要、英雄与装备统计和选手表现。" />
+    <title>数据 · 科大光荣榜</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css?v=20261125-5" />
+    <link rel="stylesheet" href="./matchmaker.css?v=2" />
+    <link rel="stylesheet" href="./stats.css?v=1" />
+    <script src="./stats.js?v=1" type="module"></script>
+  </head>
+  <body class="draft-page">
+    <header class="draft-header">
+      <div class="draft-header-inner">
+        <nav class="draft-nav" aria-label="站内导航">
+          <a class="draft-back" href="./"><span aria-hidden="true">←</span> 科大光荣榜</a>
+          <a class="draft-back" href="./matchmaker.html">平衡分队</a>
+          <a class="draft-back" href="./mmr.html">天梯分登记</a>
+        </nav>
+        <h1>数据</h1>
+        <p>比赛概要、英雄与装备统计、选手表现。数据来自 OpenDota，只含计入光荣榜的比赛。</p>
+      </div>
+    </header>
+
+    <main class="page-shell draft-shell stats-shell">
+      <section class="panel stats-controls" aria-label="筛选">
+        <div class="stats-tabs" role="tablist" aria-label="数据分类">
+          <button type="button" role="tab" data-tab="matches" aria-selected="true">比赛</button>
+          <button type="button" role="tab" data-tab="heroes" aria-selected="false">英雄与装备</button>
+          <button type="button" role="tab" data-tab="players" aria-selected="false">选手</button>
+        </div>
+        <div class="stats-range">
+          <div class="quick-ranges" id="quickRanges">
+            <button type="button" data-days="0" class="active">全部</button>
+            <button type="button" data-days="30">近一月</button>
+            <button type="button" data-days="7">近一周</button>
+            <button type="button" data-days="3">近 3 天</button>
+          </div>
+          <label>从 <input type="date" id="fromDate" /></label>
+          <label>到 <input type="date" id="toDate" /></label>
+        </div>
+        <p class="draft-meta" id="statsStatus" role="status">正在读取数据……</p>
+      </section>
+
+      <section class="panel stats-panel" id="panel-matches" role="tabpanel" aria-label="比赛"></section>
+      <section class="panel stats-panel" id="panel-heroes" role="tabpanel" aria-label="英雄与装备" hidden></section>
+      <section class="panel stats-panel" id="panel-players" role="tabpanel" aria-label="选手" hidden></section>
+    </main>
+  </body>
+</html>

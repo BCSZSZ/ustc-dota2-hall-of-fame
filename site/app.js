@@ -206,7 +206,13 @@ function renderStats(players) {
     rank.textContent = String(index + 1);
     rankCell.append(rank);
     row.append(rankCell);
-    row.append(makeCell("td", player.name, "player-name"));
+    const nameCell = makeCell("td", "", "player-name");
+    const nameLink = document.createElement("a");
+    nameLink.href = `./stats.html#player=${player.accountId}`;
+    nameLink.textContent = player.name;
+    nameLink.title = "查看该选手的数据";
+    nameCell.append(nameLink);
+    row.append(nameCell);
     row.append(makeCell("td", String(player.accountId), "account-id"));
     row.append(makeCell("td", String(player.wins)));
     row.append(makeCell("td", String(player.losses)));

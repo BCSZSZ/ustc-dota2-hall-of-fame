@@ -1,0 +1,129 @@
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from match_details import build_constants, refresh_match_details, summarise
+
+HEROES = {"1": {"id": 1, "localized_name": "Anti-Mage", "img": "/am.png"}}
+ITEMS = {
+    "blink": {"id": 1, "dname": "Blink Dagger", "cost": 2250, "qual": "component"},
+    "black_king_bar": {"id": 116, "dname": "Black King Bar", "cost": 4050, "components": ["ogre_axe"]},
+    "ogre_axe": {"id": 22, "dname": "Ogre Axe", "cost": 1000},
+    "tango": {"id": 44, "dname": "Tango", "cost": 90, "qual": "consumable"},
+    "ultimate_scepter": {"id": 108, "dname": "Aghanim's Scepter", "cost": 4200, "components": ["ogre_axe"]},
+}
+START = datetime(2026, 12, 1, 12, tzinfo=UTC)
+
+
+def raw_match(match_id: int, *, parsed: bool) -> dict[str, Any]:
+    return {
+        "match_id": match_id,
+        "start_time": 1_800_000_000,
+        "duration": 2400,
+        "radiant_win": True,
+        "radiant_score": 30,
+        "dire_score": 20,
+        "od_data": {"has_parsed": parsed},
+        "picks_bans": [{"order": 1, "is_pick": True, "team": 1, "hero_id": 1},
+                       {"order": 0, "is_pick": False, "team": 0, "hero_id": 2}],
+        "radiant_gold_adv": [0, 100] if parsed else None,
+        "objectives": [{"time": 900, "type": "CHAT_MESSAGE_ROSHAN_KILL", "team": 2},
+                       {"time": 10, "type": "CHAT_MESSAGE_FIRSTBLOOD"}],
+        "players": [
+            {
+                "account_id": 100 + slot,
+                "player_slot": slot if slot < 5 else 123 + slot,
+                "hero_id": 1,
+                "item_0": 116,
+                "item_1": 22,
+                "aghanims_scepter": 1,
+                "purchase_log": (
+                    [{"time": -60, "key": "tango"}, {"time": 600, "key": "blink"},
+                     {"time": 700, "key": "ogre_axe"}, {"time": 1300, "key": "black_king_bar"}]
+                    if parsed else None
+                ),
+            }
+            for slot in range(10)
+        ],
+    }
+
+
+class FakeClient:
+    def __init__(self, responses: dict[str, Any]) -> None:
+        self.responses = responses
+        self.requested: list[str] = []
+
+    def get_json(self, path: str) -> Any:
+        self.requested.append(path)
+        return self.responses[path]
+
+    def request_parse(self, match_id: int) -> Any:
+        self.requested.append(f"POST /request/{match_id}")
+        return {}
+
+
+def run(tmp_path: Path, client: FakeClient, now: datetime, raw: dict[int, Any] | None = None) -> dict[str, Any]:
+    refresh_match_details(
+        data_dir=tmp_path, counted=[{"match_id": 7}], raw_by_id=raw or {}, client=client,
+        error_type=KeyError, refresh_constants=False, now=now,
+    )
+    return {
+        "summary": json.loads((tmp_path / "matches.json").read_text())["matches"][0],
+        "pending": json.loads((tmp_path / "pending.json").read_text())["matches"],
+    }
+
+
+def test_summary_keeps_major_first_purchases_and_consumed_scepter() -> None:
+    constants = build_constants(HEROES, ITEMS)
+    assert constants["items"]["blink"]["major"] is True
+    assert constants["items"]["ogre_axe"]["major"] is False
+    assert constants["items"]["tango"]["major"] is False
+
+    summary = summarise(raw_match(7, parsed=True), constants)
+
+    assert summary["parse"] == "parsed"
+    assert summary["picks_bans"] == [[0, 0, 0, 2], [1, 1, 1, 1]]
+    assert summary["players"][0]["items"] == ["black_king_bar", "ogre_axe"]
+    assert summary["players"][0]["built"] == {"blink": 600, "black_king_bar": 1300, "ultimate_scepter": None}
+
+
+def test_unparsed_match_is_rechecked_after_1_2_4_8_8_hours_then_given_up(tmp_path: Path) -> None:
+    (tmp_path / "constants.json").write_text(json.dumps(build_constants(HEROES, ITEMS)))
+    client = FakeClient({"/matches/7": raw_match(7, parsed=False)})
+
+    state = run(tmp_path, client, START)
+    assert client.requested == ["/matches/7", "POST /request/7"]
+    assert state["summary"]["parse"] == "pending"
+    gaps = [datetime.fromisoformat(state["pending"]["7"]["next_check_utc"]) - START]
+
+    now = START
+    for _ in range(4):
+        now = datetime.fromisoformat(state["pending"]["7"]["next_check_utc"])
+        state = run(tmp_path, client, now)
+        gaps.append(datetime.fromisoformat(state["pending"]["7"]["next_check_utc"]) - now)
+    assert [gap / timedelta(hours=1) for gap in gaps] == [1, 2, 4, 8, 8]
+    assert client.requested.count("POST /request/7") == 1
+
+    requests_before = len(client.requested)
+    state = run(tmp_path, client, now + timedelta(minutes=10))
+    assert len(client.requested) == requests_before  # not due yet: no OpenDota call
+
+    state = run(tmp_path, client, START + timedelta(days=7, hours=1))
+    assert state["summary"]["parse"] == "unavailable"
+    assert state["pending"] == {}
+
+
+def test_parsed_recheck_writes_detail_and_clears_queue(tmp_path: Path) -> None:
+    (tmp_path / "constants.json").write_text(json.dumps(build_constants(HEROES, ITEMS)))
+    client = FakeClient({"/matches/7": raw_match(7, parsed=False)})
+    run(tmp_path, client, START)
+
+    client.responses["/matches/7"] = raw_match(7, parsed=True)
+    state = run(tmp_path, client, START + timedelta(hours=1))
+
+    assert state["summary"]["parse"] == "parsed"
+    assert state["pending"] == {}
+    detail = json.loads((tmp_path / "matches" / "7.json").read_text())
+    assert detail["gold_adv"] == [0, 100]
+    assert [objective["type"] for objective in detail["objectives"]] == ["CHAT_MESSAGE_ROSHAN_KILL"]
