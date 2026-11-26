@@ -4,11 +4,12 @@ import { deathReview } from "./deaths.js?v=2";
 import { laneReview } from "./lanes.js?v=4";
 import { matchMap } from "./map.js?v=2";
 import {
-  LANE_TEXT, SMVP_MARGIN, el, formatDate, formatDuration, hero, heroIcon, heroLabel, isMvp, isRadiant,
-  item, itemIcon, loadData, minutes, mvpBadge, playerLink, scoreText, state, teamPanel,
-} from "./stats-core.js?v=3";
+  IMP_TIP, LANE_TEXT, comebackTag, el, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
+  item, itemIcon, loadData, minutes, mvpBadge, playerLink, state, teamPanel,
+} from "./stats-core.js?v=4";
 
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
+const RANK_NAMES = { 1: "先锋", 2: "卫士", 3: "中军", 4: "统帅", 5: "传奇", 6: "万古流芳", 7: "超凡入圣", 8: "冠绝一世" };
 const TOWER_TIERS = { 1: "一塔", 2: "二塔", 3: "高地塔", 4: "基地塔" };
 const details = new Map();
 
@@ -77,13 +78,37 @@ function renderLanes(container, match) {
     laneReview(match, data, { el, heroIcon, playerLink, heroName: (id) => hero(id).name })));
 }
 
-function renderTimeline(container, match) {
-  container.replaceChildren(el("p", { class: "draft-meta" }, "正在读取曲线……"));
-  loadDetail(match).then((data) => drawTimeline(container, data));
+// STRATZ's predicted Radiant win chance at each minute, 0-100.
+function winChart(win) {
+  const width = 720;
+  const height = 160;
+  const pad = { left: 52, right: 12, top: 12, bottom: 26 };
+  const x = (index) => pad.left + (index / (win.length - 1)) * (width - pad.left - pad.right);
+  const y = (value) => pad.top + ((100 - value) / 100) * (height - pad.top - pad.bottom);
+  const ticks = [];
+  for (let minute = 0; minute < win.length; minute += 10) {
+    ticks.push(`<line x1="${x(minute)}" x2="${x(minute)}" y1="${pad.top}" y2="${height - pad.bottom}" class="grid"/>`,
+      `<text x="${x(minute)}" y="${height - 8}" text-anchor="middle">${minute}′</text>`);
+  }
+  const figure = el("figure", { class: "adv-chart win-chart" });
+  figure.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="天辉每分钟胜率">
+    ${ticks.join("")}
+    <line x1="${pad.left}" x2="${width - pad.right}" y1="${y(50)}" y2="${y(50)}" class="zero"/>
+    ${[100, 50, 0].map((value) => `<text x="${pad.left - 6}" y="${y(value) + 4}" text-anchor="end">${value}%</text>`).join("")}
+    <polyline points="${win.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(" ")}" class="win"/>
+  </svg>`;
+  figure.append(el("figcaption", {}, el("span", { class: "key win" }, "天辉胜率"), " · STRATZ 每分钟预测，低于 50% 为夜魇占优"));
+  return figure;
 }
 
-function drawTimeline(container, data) {
+function renderTimeline(container, match) {
+  container.replaceChildren(el("p", { class: "draft-meta" }, "正在读取曲线……"));
+  loadDetail(match).then((data) => drawTimeline(container, data, match));
+}
+
+function drawTimeline(container, data, match) {
   container.replaceChildren();
+  if (match.win?.length > 1) container.append(winChart(match.win));
   container.append(advantageChart(data.gold_adv || [], data.xp_adv || []));
   const events = (data.objectives || []).flatMap((objective) => {
     if (objective.type === "CHAT_MESSAGE_ROSHAN_KILL") {
@@ -107,9 +132,9 @@ function scoreboard(match, radiant) {
   const teamWon = radiant === match.radiant_win;
   const rows = players.map((player) =>
     el("tr", {},
-      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(player.relative >= SMVP_MARGIN) : null),
+      el("td", {}, playerLink(player.account_id), isMvp(match, player) ? mvpBadge(match.smvp) : null),
       el("td", {}, heroLabel(player.hero)),
-      el("td", { class: "num" }, el("b", {}, scoreText(player.score))),
+      el("td", { class: "num" }, gradeBadge(player), el("b", {}, impText(player.score))),
       el("td", { class: "num" }, player.pos ? `${player.pos} 号位` : "—"),
       el("td", { class: "num" }, `${player.k}/${player.d}/${player.a}`),
       el("td", { class: "num" }, `${player.lh}/${player.dn}`),
@@ -130,7 +155,7 @@ function scoreboard(match, radiant) {
     el("h3", {}, radiant ? "天辉" : "夜魇", el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
       el("small", {}, `击杀 ${radiant ? match.radiant_score : match.dire_score}`)),
     el("div", { class: "table-scroll" }, el("table", { class: "data-table scoreboard" },
-      el("thead", {}, el("tr", {}, ["选手", "英雄", "评分", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10′ 经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
+      el("thead", {}, el("tr", {}, ["选手", "英雄", "IMP", "位置", "K/D/A", "正/反补", "GPM/XPM", "净值", "英雄伤害", "建筑伤害", "治疗", "10′ 经济", "对线", "装备"].map((label) => el("th", { scope: "col" }, label)))),
       el("tbody", {}, rows))));
 }
 
@@ -157,7 +182,10 @@ function matchDetail(match) {
       : "OpenDota 没能解析这场录像，只显示基础数据。");
   return el("div", { class: "match-detail" },
     el("p", { class: "draft-meta" }, `比赛 ID ${match.match_id} · `,
-      el("a", { href: `https://www.opendota.com/matches/${match.match_id}`, target: "_blank", rel: "noopener" }, "在 OpenDota 查看")),
+      el("a", { href: `https://www.opendota.com/matches/${match.match_id}`, target: "_blank", rel: "noopener" }, "在 OpenDota 查看"), " · ",
+      el("a", { href: `https://stratz.com/matches/${match.match_id}`, target: "_blank", rel: "noopener" }, "在 STRATZ 查看"),
+      match.rank ? ` · STRATZ 段位估计 ${RANK_NAMES[Math.floor(match.rank / 10)] || ""} ${match.rank % 10 || ""}`.trimEnd() : "",
+      match.players.some((player) => Number.isFinite(player.imp)) ? null : " · STRATZ 还没给这场评分，MVP 暂按六项能力评选"),
     parseNote,
     el("h3", {}, "BP 顺序"),
     el("ol", { class: "draft-strip" }, match.picks_bans.map(([, isPick, team, heroId]) =>
@@ -170,7 +198,7 @@ function matchDetail(match) {
     el("h3", {}, "装备购买时间"),
     el("p", { class: "draft-meta" }, "只列合成装备和较贵的单件，显示首次购买的分钟；“终局”表示没有购买记录但终局持有。"),
     buildTimes(match),
-    el("h3", {}, "经济与经验"),
+    el("h3", {}, "胜率、经济与经验"),
     timeline,
     el("h3", {}, "地图：英雄活动与视野"),
     map,
@@ -181,7 +209,7 @@ function matchDetail(match) {
 function matchHeader(match) {
   return el("div", { class: "match-page-head" },
     el("div", { class: "match-head" },
-      el("span", { class: "match-when" }, formatDate(match.start_time), el("small", {}, `时长 ${formatDuration(match.duration)}`)),
+      el("span", { class: "match-when" }, formatDate(match.start_time), el("small", {}, `时长 ${formatDuration(match.duration)}`), comebackTag(match)),
       el("span", { class: "match-score" },
         el("b", { class: match.radiant_win ? "radiant won" : "radiant" }, "天辉"),
         `${match.radiant_score} : ${match.dire_score}`,

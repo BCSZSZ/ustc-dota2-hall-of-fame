@@ -10,6 +10,7 @@ on:
       - "collector.py"
       - "match_details.py"
       - "replays.py"
+      - "stratz.py"
       - "replay_events.py"
       - "hero_names_zh.json"
       - "mmr-api/**"
@@ -72,6 +73,7 @@ jobs:
         env:
           OPENDOTA_API_KEY: ${{ secrets.OPENDOTA_API_KEY }}
           OPENDOTA_MAX_PAID_CALLS: "250"
+          STRATZ_TOKEN: ${{ secrets.STRATZ_TOKEN }}
           # Uploads archived replays to the year's Release (contents: write).
           GH_TOKEN: ${{ github.token }}
           MODE: ${{ inputs.mode || 'full' }}

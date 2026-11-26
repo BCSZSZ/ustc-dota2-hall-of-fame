@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 
 from match_details import _read, ensure_images, refresh_match_details
 from replays import REPLAY_DIR, archive_all, gh_uploader, plan_downloads, read_manifest, record_archives
+from stratz import refresh_stratz, stratz_client
 
 API_BASE_URL = "https://api.opendota.com/api"
 STEAM_COMMUNITY_URL = "https://steamcommunity.com"
@@ -549,6 +550,12 @@ def main(argv: list[str] | None = None) -> int:
             )
     with httpx.Client(timeout=15.0, follow_redirects=True) as cdn:
         images = ensure_images(image_dir=args.output.parent.parent / "img", data_dir=args.output.parent, http=cdn)
+    if token := os.getenv("STRATZ_TOKEN"):
+        with stratz_client(token) as stratz_http:
+            stratz = refresh_stratz(data_dir=data_dir, match_ids=match_ids, http=stratz_http, now=now)
+        print(f"STRATZ: {stratz['scored']} matches with IMP, {stratz['fetched']} fetched, {stratz['waiting']} waiting")
+    else:
+        print("STRATZ: no STRATZ_TOKEN, IMP and win chances not refreshed")
     write_snapshot(args.output, payload)
     print(f"Images: {images} new hero/item images saved")
     print(f"Replays: {replays['archived']} archived to Releases, {replays['waiting']} waiting for a retry")

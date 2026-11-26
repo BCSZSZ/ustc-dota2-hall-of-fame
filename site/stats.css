@@ -360,6 +360,30 @@
   stroke: #4a6fb5;
 }
 
+.adv-chart .win {
+  stroke: #2f8f5b;
+}
+
+.key.win::before {
+  background: #2f8f5b;
+}
+
+.match-tag {
+  align-self: center;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: help;
+}
+
+.match-tag.comeback {
+  color: #fff8e0;
+  background: linear-gradient(135deg, #1f7a4a, #e19a22);
+  box-shadow: 0 0 6px rgba(225, 154, 34, 0.45);
+}
+
 .adv-chart figcaption {
   color: var(--muted);
   font-size: 0.85rem;

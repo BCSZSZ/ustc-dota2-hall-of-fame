@@ -3,9 +3,9 @@
 import { laneSlots } from "./lanes.js?v=4";
 import {
   LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, kda,
-  loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, section,
+  impText, loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, section,
   smoothed, sortableTable, state, statCard, titleChip, visibleMatches,
-} from "./stats-core.js?v=3";
+} from "./stats-core.js?v=4";
 
 function playerDetail(games, matches) {
   const everyone = matches.flatMap((match) => match.players);
@@ -34,17 +34,17 @@ function playerDetail(games, matches) {
       { key: "record", label: "胜负", value: (row) => row.wins - (row.games.length - row.wins), render: (row) => record(row.wins, row.games.length), align: "num" },
       { key: "rate", label: "胜率", value: (row) => smoothed(row.wins, row.games.length), render: (row) => rate(row.wins, row.games.length), align: "num" },
       { key: "kda", label: "平均 K/D/A", value: (row) => kda(row.games).ratio, render: (row) => kda(row.games).text, align: "num" },
-      { key: "score", label: "评分", value: (row) => meanOf(row.games.map((player) => player.score)) ?? -1, render: (row) => scoreText(meanOf(row.games.map((player) => player.score))), align: "num" },
+      { key: "score", label: "场均 IMP", value: (row) => meanOf(row.games.map((player) => player.score)) ?? -Infinity, render: (row) => impText(meanOf(row.games.map((player) => player.score))), align: "num" },
       { key: "gold10", label: "10 分钟经济", value: (row) => averageOf(row.games, "gold10") ?? -1, render: (row) => rounded(averageOf(row.games, "gold10")), align: "num" },
       { key: "gpm", label: "GPM", value: (row) => averageOf(row.games, "gpm") ?? -1, render: (row) => rounded(averageOf(row.games, "gpm")), align: "num" },
     ], [...heroes.values()], "games")),
     section("比赛记录", null, el("div", { class: "table-scroll" }, el("table", { class: "data-table" },
-      el("thead", {}, el("tr", {}, ["结果", "时间", "英雄", "评分", "称号", "位置", "K/D/A", "10 分钟经济", "对线", ""].map((label) => el("th", { scope: "col" }, label)))),
+      el("thead", {}, el("tr", {}, ["结果", "时间", "英雄", "IMP", "称号", "位置", "K/D/A", "10 分钟经济", "对线", ""].map((label) => el("th", { scope: "col" }, label)))),
       el("tbody", {}, [...games].reverse().map((game) => el("tr", {},
         el("td", {}, el("span", { class: game.won ? "result win" : "result" }, game.won ? "胜" : "负")),
         el("td", {}, formatDate(game.match.start_time)),
         el("td", {}, heroLabel(game.player.hero)),
-        el("td", { class: "num" }, gradeBadge(game.player), scoreText(game.player.score)),
+        el("td", { class: "num" }, gradeBadge(game.player), impText(game.player.score)),
         el("td", {}, (game.player.titles || []).map((name) => titleChip(name))),
         el("td", { class: "num" }, game.player.pos ? `${game.player.pos} 号位` : "—"),
         el("td", { class: "num" }, `${game.player.k}/${game.player.d}/${game.player.a}`),

@@ -45,7 +45,7 @@ jobs:
           now=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
           pending=$(gh api -H "Accept: application/vnd.github.raw" \
             "repos/$REPO/contents/site/data/pending.json?ref=main" 2>/dev/null) || pending='{}'
-          due=$(jq --arg now "$now" '[((.matches // {})[], (.replays // {})[]) | select(.next_check_utc <= $now)] | length' <<<"$pending")
+          due=$(jq --arg now "$now" '[((.matches // {})[], (.replays // {})[], (.stratz // {})[]) | select(.next_check_utc <= $now)] | length' <<<"$pending")
           if [ "$due" -gt 0 ]; then
             echo "$due match(es) are due for an OpenDota parse check or a replay download retry."
             gh workflow run pages.yml -R "$REPO" --ref main -f mode=incremental
