@@ -4,7 +4,7 @@ from pathlib import Path
 
 import httpx
 
-from stratz import refresh_stratz
+from stratz import MARKS, PAIRS, minute_features, minute_snapshot, refresh_stratz
 
 NOW = datetime(2026, 12, 1, 12, tzinfo=UTC)
 SLOTS = [0, 1, 2, 3, 4, 128, 129, 130, 131, 132]
@@ -32,7 +32,7 @@ def test_scored_matches_are_stored_and_unscored_ones_wait(tmp_path: Path) -> Non
     calls: list = []
     result = refresh_stratz(data_dir=tmp_path, match_ids=[1, 2], http=client({1: scored(20), 2: scored(None)}, calls), now=NOW)
 
-    assert result == {"scored": 1, "fetched": 2, "waiting": 1}
+    assert result == {"scored": 1, "fetched": 2, "waiting": 1, "per_minute": 0}
     assert read(tmp_path, "stratz.json")["matches"]["1"] == {
         "rank": 71, "imp": {str(slot): 20 for slot in SLOTS}, "win": [50, 18, 90]}
     pending = read(tmp_path, "pending.json")["stratz"]["2"]
@@ -63,3 +63,38 @@ def test_other_pending_queues_are_kept(tmp_path: Path) -> None:
     (tmp_path / "pending.json").write_text(json.dumps({"matches": {"9": {"attempts": 1}}}), encoding="utf-8")
     refresh_stratz(data_dir=tmp_path, match_ids=[1], http=client({1: scored(1)}, []), now=NOW)
     assert read(tmp_path, "pending.json")["matches"] == {"9": {"attempts": 1}}
+
+
+def with_minutes(imp: int | None, minutes: int = 12) -> dict:
+    """An unscored-or-scored match that also carries STRATZ per-minute stats and hero averages."""
+    def player(slot: int) -> dict:
+        return {"playerSlot": slot, "imp": imp, "isRadiant": slot < 128, "lane": "SAFE_LANE" if slot in (0, 128) else "ROAMING",
+                "heroAverage": [{"time": t, "kills": t / 10, "deaths": t / 10, "assists": t / 5, "networth": 500 * t, "xp": 400 * t,
+                                 "cs": 5 * t, "heroDamage": 300 * t, "towerDamage": 10 * t, "healingAllies": 0} for t in range(minutes + 1)],
+                "stats": {"lastHitsPerMinute": [6] * (minutes + 1), "experiencePerMinute": [450] * (minutes + 1),
+                          "networthPerMinute": [600 * t for t in range(minutes + 1)], "heroDamagePerMinute": [250] * (minutes + 1),
+                          "towerDamagePerMinute": [0] * (minutes + 1), "healPerMinute": [0] * (minutes + 1),
+                          "killEvents": [{"time": 290}], "deathEvents": [{"time": 400}, {"time": 700}], "assistEvents": []}}
+    return {**scored(imp), "durationSeconds": minutes * 60 + 30, "topLaneOutcome": "DIRE_VICTORY", "midLaneOutcome": "TIE",
+            "bottomLaneOutcome": "RADIANT_STOMP", "players": [player(slot) for slot in SLOTS]}
+
+
+def test_snapshot_compares_each_stat_with_the_hero_average() -> None:
+    snapshot = minute_snapshot(with_minutes(None))
+    assert set(snapshot) == {str(slot) for slot in SLOTS}
+    radiant = snapshot["0"]
+    # Marks below the game length plus the last minute; per mark the player's values then the hero averages.
+    assert list(radiant["t"]) == ["5", "10", "12"]
+    assert radiant["t"]["5"] == [36, 2700, 3000, 1500, 0, 1, 0, 0, 0, 25, 2000, 2500, 1500, 50, 0.5, 0.5, 1.0, 0]
+    # Radiant safe lane is the bottom lane, which Radiant stomped; the Dire safe lane is top, which Dire won.
+    assert radiant["lane"] == 2 and snapshot["128"]["lane"] == 1 and snapshot["1"]["lane"] == 0
+    assert len(minute_features(radiant)) == (len(MARKS) + 1) * len(PAIRS) * 2 + 1
+
+
+def test_unscored_match_keeps_a_snapshot_until_stratz_scores_it(tmp_path: Path) -> None:
+    calls: list = []
+    result = refresh_stratz(data_dir=tmp_path, match_ids=[2], http=client({2: with_minutes(None)}, calls), now=NOW)
+    assert result["per_minute"] == 1 and set(read(tmp_path, "stratz.json")["minute"]["2"]) == {str(slot) for slot in SLOTS}
+    refresh_stratz(data_dir=tmp_path, match_ids=[2], http=client({2: with_minutes(7)}, calls), now=NOW + timedelta(hours=2))
+    stored = read(tmp_path, "stratz.json")
+    assert stored["minute"] == {} and stored["matches"]["2"]["imp"]["0"] == 7

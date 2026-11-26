@@ -553,7 +553,8 @@ def main(argv: list[str] | None = None) -> int:
     if token := os.getenv("STRATZ_TOKEN"):
         with stratz_client(token) as stratz_http:
             stratz = refresh_stratz(data_dir=data_dir, match_ids=match_ids, http=stratz_http, now=now)
-        print(f"STRATZ: {stratz['scored']} matches with IMP, {stratz['fetched']} fetched, {stratz['waiting']} waiting")
+        print(f"STRATZ: {stratz['scored']} matches with IMP, {stratz['fetched']} fetched, {stratz['waiting']} waiting, "
+              f"{stratz['per_minute']} with per-minute data for the local estimate")
     else:
         print("STRATZ: no STRATZ_TOKEN, IMP and win chances not refreshed")
     write_snapshot(args.output, payload)

@@ -1,6 +1,6 @@
 // Data, scoring and components shared by the stats list, match and player pages.
 
-import { estimateImp } from "./imp-model.js?v=3";
+import { estimateImp } from "./imp-model.js?v=4";
 import { loadPlayerAliases } from "./shared-mmr.js?v=3";
 
 const DAY_SECONDS = 86400;
@@ -289,8 +289,12 @@ const COMEBACK_CHANCE = 20;
 const comebackTag = (match) => (match.comeback === null || match.comeback === undefined ? null
   : el("span", { class: "match-tag comeback", title: `胜方胜率曾跌到 ${match.comeback}%（STRATZ 每分钟胜率预测，≤ ${COMEBACK_CHANCE}% 算翻盘）` }, "翻盘"));
 // Shown beside the duration when this match's IMP comes from the local model instead of STRATZ.
+const ESTIMATE_BASIS = {
+  minute: "按 STRATZ 逐分钟数据与同英雄同号位平均曲线的对比估算",
+  basic: "STRATZ 也没有这场的逐分钟数据，只按赛后数据估算，误差较大",
+};
 const estimateTag = (match) => (match.impSource === "est"
-  ? el("span", { class: "match-tag estimate", title: "STRATZ 没给这场 IMP（有凯的比赛一律不评），本场 IMP、评分、评级和 MVP 由本站模型估算；STRATZ 补上后改用真实 IMP" }, "估算")
+  ? el("span", { class: "match-tag estimate", title: `STRATZ 没给这场 IMP（有凯的比赛一律不评），本场 IMP、评分、评级和 MVP 由本站模型估算：${ESTIMATE_BASIS[match.impModel]}；STRATZ 补上后改用真实 IMP` }, "估算")
   : null);
 
 // ---------- 本局称号 ----------
@@ -505,9 +509,9 @@ async function loadData() {
     if (!response.ok) throw new Error(`${path} HTTP ${response.status}`);
     return response.json();
   });
-  const [summaries, constants, league, aliases, stratz, impModel] = await Promise.all([
+  const [summaries, constants, league, aliases, stratz] = await Promise.all([
     read("./data/matches.json"), read("./data/constants.json"), read("./data/league.json"), loadPlayerAliases(),
-    read("./data/stratz.json").catch(() => ({})), read("./data/imp-model.json").catch(() => null),
+    read("./data/stratz.json").catch(() => ({})),
   ]);
   state.heroes = constants.heroes || {};
   state.items = constants.items || {};
@@ -527,15 +531,19 @@ async function loadData() {
       if (fixed) Object.assign(player, { pos: fixed.pos, pos_source: fixed.source });
     }
   }
+  // STRATZ never scores some matches (any with Kez); those use the local estimate from fit_imp.py, whose
+  // model file is only fetched when such a match exists.
+  const impModel = state.matches.some((match) => !stratz.matches?.[match.match_id]?.imp)
+    ? await read("./data/imp-model.json").catch(() => null) : null;
   for (const match of state.matches) {
     const extra = stratz.matches?.[match.match_id];
     match.rank = extra?.rank ?? null;
     match.win = extra?.win || null;
-    // STRATZ never scores some matches (any with Kez); those use the local estimate from fit_imp.py.
-    const estimate = extra?.imp ? null : estimateImp(impModel, match);
+    const estimate = extra?.imp ? null : estimateImp(impModel, match, stratz.minute?.[match.match_id]);
     match.impSource = extra?.imp ? "stratz" : estimate ? "est" : null;
+    match.impModel = estimate?.model ?? null;
     for (const player of match.players) {
-      player.imp = extra?.imp?.[player.slot] ?? estimate?.[player.slot] ?? null;
+      player.imp = extra?.imp?.[player.slot] ?? estimate?.imp[player.slot] ?? null;
       player.impEstimated = match.impSource === "est";
     }
   }

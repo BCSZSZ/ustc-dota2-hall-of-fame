@@ -1,20 +1,25 @@
-"""Fit the local IMP model used when STRATZ has no IMP for a match (it never scores matches with Kez).
+"""Fit the local IMP models used when STRATZ has no IMP for a match (it never scores matches with Kez).
 
-Pulls the recent public matches of every league player from STRATZ and fits one ridge regression with a
-separate penalty per block of terms:
+Pulls the recent public matches of every league player from STRATZ, with per-minute stats, and fits two
+models of the same form: "minute" also reads each player's per-minute snapshot against STRATZ's hero
+average (stratz.minute_snapshot), and "basic" uses end-of-game stats only, for a match STRATZ never parsed.
+Each is one ridge regression with a separate penalty per block of terms:
   * per-(position, result) linear terms on own per-minute stats, logs, team shares and team-vs-enemy context;
   * the same stats minus their expected value for that hero and position (shrunk means), and those
     hero-normalised stats of teammates and enemies, because IMP compares a game with others on the same hero;
   * pairwise products of 29 key standardised features;
   * hero x position offsets, and "draft" terms for every other hero in the match as ally or enemy;
   * a piecewise-linear tail calibration fitted on 5-fold out-of-fold predictions.
+  * (minute model) the player's last hits, XP, net worth, damage, kills, deaths, assists and healing at
+    5-30 minutes and the end, each against the hero average, and the lane result.
 It writes site/data/imp-model.json, which site/imp-model.js evaluates in the browser. Needs numpy, which the
 site itself does not, so run it with uv:
 
     STRATZ_TOKEN=... uv run --with numpy --with-requirements requirements.txt python fit_imp.py --cache /tmp/imp-train.json
 
 Three independent approaches (this one, gradient-boosted trees, a match-level neural net) were compared on
-the same split in 2026-11; this one was best (held-out corr 0.905, league 0.880) and blending added ~0.002.
+end-of-game stats in 2026-11; this one was best (held-out corr 0.905, league 0.880) and blending added
+~0.002. The per-minute snapshot raised it to about 0.95.
 """
 
 from __future__ import annotations
@@ -29,10 +34,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import numpy as np
 from dotenv import load_dotenv
 
-from stratz import STRATZ_URL, stratz_client
+from stratz import MINUTE_FIELDS, MINUTE_QUERY, STRATZ_URL, minute_features, minute_snapshot, stratz_client
 
 DATA_DIR = Path(__file__).with_name("site") / "data"
 KEYS = ("k", "d", "a", "lh", "dn", "gpm", "xpm", "hd", "td", "hh", "nw", "lvl")
@@ -41,10 +47,11 @@ STRATZ_KEYS = {"k": "kills", "d": "deaths", "a": "assists", "lh": "numLastHits",
                "nw": "networth", "lvl": "level"}
 # Modes whose IMP matches normal games; turbo and ability draft play differently.
 MODES = {"ALL_PICK_RANKED", "ALL_PICK", "CAPTAINS_MODE", "CAPTAINS_DRAFT", "RANDOM_DRAFT", "SINGLE_DRAFT"}
-HISTORY = """query($a: Long!, $skip: Int!) { player(steamAccountId: $a) { matches(request: {take: 100, skip: $skip}) {
-  id durationSeconds didRadiantWin gameMode
-  players { isRadiant heroId position imp kills deaths assists numLastHits numDenies goldPerMinute
-    experiencePerMinute heroDamage towerDamage heroHealing networth level } } } }"""
+PAGE = 50
+# The per-minute fields with each player's end-of-game stats added to the same players selection.
+HISTORY = ("query($a: Long!, $skip: Int!) { player(steamAccountId: $a) { matches(request: {take: %d, skip: $skip}) { id didRadiantWin gameMode "
+           % PAGE + MINUTE_FIELDS.replace("players { playerSlot isRadiant lane", "players { playerSlot isRadiant lane heroId position imp kills deaths "
+           "assists numLastHits numDenies goldPerMinute experiencePerMinute heroDamage towerDamage heroHealing networth level") + " } } }")
 
 BASE = ["won", "min", "logmin", "kpm", "dpm", "apm", "lhpm", "dnpm", "hdpm", "tdpm", "hhpm", "gpm", "xpm", "lvl", "nwpm",
         "l_kpm", "l_dpm", "l_apm", "l_lhpm", "l_dnpm", "l_hd", "l_td", "l_hh", "l_gpm", "l_xpm", "l_kda",
@@ -114,18 +121,20 @@ def stratz_rows(history: list[dict], skip_ids: set[int]) -> list[dict]:
         if match["id"] in skip_ids or match.get("gameMode") not in MODES or (match.get("durationSeconds") or 0) < 600:
             continue
         players = []
+        minute = match.get("minute")
         for p in match["players"]:
             stats = {key: p[source] for key, source in STRATZ_KEYS.items()}
             if any(v is None for v in stats.values()) or p["imp"] is None or not p.get("position"):
                 break
-            players.append({**stats, "pos": int(p["position"][-1]), "hero": p["heroId"], "radiant": p["isRadiant"], "imp": p["imp"]})
+            players.append({**stats, "pos": int(p["position"][-1]), "hero": p["heroId"], "radiant": p["isRadiant"], "imp": p["imp"],
+                            "mf": minute_features(minute[str(p["playerSlot"])]) if minute else None})
         else:
             rows += match_rows(match["id"], players, match["didRadiantWin"], match["durationSeconds"] / 60)
     return rows
 
 
-def league_rows(data_dir: Path) -> list[dict]:
-    """League matches STRATZ scored, with positions corrected like the site does, to check the model."""
+def league_rows(data_dir: Path, minute: dict[str, Any]) -> list[dict]:
+    """League matches STRATZ scored, with positions corrected like the site does, to check the models."""
     summaries = json.loads((data_dir / "matches.json").read_text(encoding="utf-8"))["matches"]
     scored = json.loads((data_dir / "stratz.json").read_text(encoding="utf-8")).get("matches", {})
     fixes = json.loads((data_dir / "positions.json").read_text(encoding="utf-8")) if (data_dir / "positions.json").exists() else {}
@@ -134,9 +143,11 @@ def league_rows(data_dir: Path) -> list[dict]:
         imp = scored.get(str(match["match_id"]), {}).get("imp")
         if not imp:
             continue
+        snapshot = minute.get(str(match["match_id"]))
         players = [{**{k: p.get(k) or 0 for k in KEYS}, "slot": p["slot"], "hero": p["hero"], "radiant": p["slot"] < 128,
                     "pos": (fixes.get(str(match["match_id"]), {}).get(str(p["slot"])) or {}).get("pos") or p.get("pos"),
-                    "imp": imp[str(p["slot"])]} for p in match["players"]]
+                    "imp": imp[str(p["slot"])], "mf": minute_features(snapshot[str(p["slot"])]) if snapshot else None,
+                    "snapshot": snapshot[str(p["slot"])] if snapshot else None} for p in match["players"]]
         if all(p["pos"] for p in players):
             rows += match_rows(match["match_id"], players, match["radiant_win"], match["duration"] / 60)
     return rows
@@ -160,7 +171,7 @@ def hero_table(rows: list[dict]) -> dict[str, Any]:
     return {"hp": table, "pos": {str(p): by_pos[p] for p in by_pos}}
 
 
-def row_features(row: dict, table: dict) -> list[float]:
+def row_features(row: dict, table: dict, minute: bool = False) -> list[float]:
     normalised, mine = [], None
     for side, won in ((row["team"], row["won"]), (row["enemy"], not row["won"])):
         other = row["enemy"] if side is row["team"] else row["team"]
@@ -182,7 +193,7 @@ def row_features(row: dict, table: dict) -> list[float]:
         for q in range(1, 6):
             found = [v for o, pos, me, v in normalised if o == own and pos == q and not me]
             x += list(found[0][ki]) if found else [0.0] * len(KZ)
-    return x
+    return x + list(row["player"]["mf"]) if minute else x
 
 
 def draft_keys(row: dict) -> list[tuple[str, str]]:
@@ -245,10 +256,10 @@ def predict(model: dict, x: np.ndarray, rows: list[dict]) -> np.ndarray:
     return c[0] + c[1] * raw + sum(c[i + 2] * np.maximum(raw - k, 0) for i, k in enumerate(knots))
 
 
-def fit_calibrated(rows: list[dict]) -> tuple[dict, dict]:
+def fit_calibrated(rows: list[dict], minute: bool) -> tuple[dict, dict]:
     """Fit on all rows; the tail calibration maps 5-fold out-of-fold estimates onto IMP."""
     table = hero_table(rows)
-    x = np.array([row_features(r, table) for r in rows])
+    x = np.array([row_features(r, table, minute) for r in rows])
     fold = np.array([(r["match"] // 5) % 5 for r in rows])
     oof = np.zeros(len(rows))
     for f in range(5):
@@ -261,8 +272,8 @@ def fit_calibrated(rows: list[dict]) -> tuple[dict, dict]:
     return model, table
 
 
-def score(model: dict, table: dict, rows: list[dict]) -> tuple[dict[str, float], np.ndarray]:
-    estimate = predict(model, np.array([row_features(r, table) for r in rows]), rows)
+def score(model: dict, table: dict, rows: list[dict], minute: bool) -> tuple[dict[str, float], np.ndarray]:
+    estimate = predict(model, np.array([row_features(r, table, minute) for r in rows]), rows)
     truth = np.array([r["imp"] for r in rows], float)
     return {"rows": len(rows), "corr": round(float(np.corrcoef(truth, estimate)[0, 1]), 4),
             "rmse": round(float(np.sqrt(((estimate - truth) ** 2).mean())), 2),
@@ -282,20 +293,63 @@ def export(model: dict, table: dict, check: dict) -> dict[str, Any]:
             "check": check}
 
 
-def download(accounts: list[int], token: str) -> list[dict[str, Any]]:
+def _compact(match: dict[str, Any]) -> dict[str, Any]:
+    """Keep end-of-game stats and the per-minute snapshot; the raw per-minute arrays are large."""
+    fields = ("playerSlot", "isRadiant", "heroId", "position", "imp", *STRATZ_KEYS.values())
+    return {"id": match["id"], "durationSeconds": match["durationSeconds"], "didRadiantWin": match["didRadiantWin"],
+            "gameMode": match.get("gameMode"), "players": [{k: p.get(k) for k in fields} for p in match["players"]],
+            "minute": minute_snapshot(match)}
+
+
+def download(accounts: list[int], league_ids: list[int], token: str) -> dict[str, Any]:
     seen: dict[int, dict[str, Any]] = {}
+    league: dict[str, Any] = {}
     with stratz_client(token) as http:
-        for account in accounts:
-            for skip in range(0, 500, 100):
-                response = http.post(STRATZ_URL, json={"query": HISTORY, "variables": {"a": account, "skip": skip}}, timeout=90)
-                response.raise_for_status()
-                matches = ((response.json().get("data") or {}).get("player") or {}).get("matches") or []
+        def post(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            for attempt in range(4):
+                try:
+                    response = http.post(STRATZ_URL, json={"query": query, "variables": variables}, timeout=180)
+                    response.raise_for_status()
+                    return response.json().get("data") or {}
+                except httpx.HTTPError as error:
+                    print(f"retry {attempt + 1}: {error}")
+                    time.sleep(10 * (attempt + 1))
+            return {}
+        for match_id in league_ids:
+            snapshot = minute_snapshot(post(MINUTE_QUERY, {"id": match_id}).get("match"))
+            if snapshot:
+                league[str(match_id)] = snapshot
+        for number, account in enumerate(accounts, 1):
+            for skip in range(0, 500, PAGE):
+                matches = (post(HISTORY, {"a": account, "skip": skip}).get("player") or {}).get("matches") or []
                 for match in matches:
-                    seen[match["id"]] = match
-                time.sleep(0.4)
-                if len(matches) < 100:
+                    seen[match["id"]] = _compact(match)
+                time.sleep(0.3)
+                if len(matches) < PAGE:
                     break
-    return list(seen.values())
+            print(f"account {number}/{len(accounts)}: {len(seen)} matches", flush=True)
+    return {"history": list(seen.values()), "league_minute": league}
+
+
+def variant(rows: list[dict], league: list[dict], minute: bool) -> dict[str, Any]:
+    """Fit one model; held-out score from a fit without match ids % 5 == 0, league score from the final fit."""
+    trial, trial_table = fit_calibrated([r for r in rows if r["match"] % 5 != 0], minute)
+    held_out, _ = score(trial, trial_table, [r for r in rows if r["match"] % 5 == 0], minute)
+    model, table = fit_calibrated(rows, minute)
+    league_score, estimate = score(model, table, league, minute) if league else (None, [])
+    # One league match with this model's estimates, so tests can confirm site/imp-model.js agrees.
+    check = None
+    if league:
+        first = [r for r in league if r["match"] == league[0]["match"]]
+        players = [{**{k: r["player"][k] for k in KEYS}, "slot": r["player"]["slot"], "hero": r["hero"], "pos": r["pos"]} for r in first]
+        check = {"match": {"duration": round(first[0]["minutes"] * 60), "radiant_win": first[0]["won"] == (players[0]["slot"] < 128),
+                           "players": players},
+                 "minute": {str(r["player"]["slot"]): r["player"]["snapshot"] for r in first} if minute else None,
+                 "expected": {str(r["player"]["slot"]): float(e) for r, e in zip(first, estimate[:len(first)])}}
+    payload = export(model, table, check)
+    payload["validation"] = {"held_out": held_out, "league": league_score}
+    payload["trained_rows"] = len(rows)
+    return payload
 
 
 def main() -> int:
@@ -306,33 +360,23 @@ def main() -> int:
     args = parser.parse_args()
     summaries = json.loads((args.data_dir / "matches.json").read_text(encoding="utf-8"))["matches"]
     if args.cache and args.cache.exists():
-        history = json.loads(args.cache.read_text(encoding="utf-8"))
+        downloaded = json.loads(args.cache.read_text(encoding="utf-8"))
     else:
         accounts = sorted({p["account_id"] for m in summaries for p in m["players"] if p.get("account_id")})
-        history = download(accounts, os.environ["STRATZ_TOKEN"])
+        downloaded = download(accounts, [m["match_id"] for m in summaries], os.environ["STRATZ_TOKEN"])
         if args.cache:
-            args.cache.write_text(json.dumps(history), encoding="utf-8")
-    # League matches stay out of training so they can check the model.
-    rows = stratz_rows(history, {m["match_id"] for m in summaries})
-    league = league_rows(args.data_dir)
-    trial, trial_table = fit_calibrated([r for r in rows if r["match"] % 5 != 0])
-    held_out, _ = score(trial, trial_table, [r for r in rows if r["match"] % 5 == 0])
-    model, table = fit_calibrated(rows)
-    league_score, league_estimate = score(model, table, league) if league else (None, [])
-    # One league match with this model's estimates, so tests can confirm site/imp-model.js agrees.
-    check = None
-    if league:
-        first = [r for r in league if r["match"] == league[0]["match"]]
-        players = [{**{k: r["player"][k] for k in KEYS}, "slot": r["player"]["slot"], "hero": r["hero"], "pos": r["pos"]} for r in first]
-        check = {"match": {"duration": round(first[0]["minutes"] * 60), "radiant_win": first[0]["won"] == (players[0]["slot"] < 128),
-                           "players": players},
-                 "expected": {str(r["player"]["slot"]): float(e) for r, e in zip(first, league_estimate[:len(first)])}}
-    payload = export(model, table, check)
-    payload["trained"] = {"utc": datetime.now(UTC).isoformat(timespec="seconds"), "rows": len(rows),
-                          "matches": len({r["match"] for r in rows})}
-    payload["validation"] = {"held_out": held_out, "league": league_score}
+            args.cache.write_text(json.dumps(downloaded), encoding="utf-8")
+    # League matches stay out of training so they can check the models.
+    rows = stratz_rows(downloaded["history"], {m["match_id"] for m in summaries})
+    league = league_rows(args.data_dir, downloaded["league_minute"])
+    payload = {
+        "minute": variant([r for r in rows if all(o["mf"] for o in r["team"] + r["enemy"])],
+                          [r for r in league if r["player"]["mf"] is not None], True),
+        "basic": variant(rows, league, False),
+        "trained": {"utc": datetime.now(UTC).isoformat(timespec="seconds"), "matches": len({r["match"] for r in rows})},
+    }
     (args.data_dir / "imp-model.json").write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
-    print(json.dumps({**payload["trained"], **payload["validation"]}, ensure_ascii=False))
+    print(json.dumps({name: {"rows": payload[name]["trained_rows"], **payload[name]["validation"]} for name in ("minute", "basic")}, ensure_ascii=False))
     return 0
 
 

@@ -1,6 +1,7 @@
-// Local IMP estimate for matches STRATZ has not scored (it never scores matches with Kez), from end-of-game
-// stats. The model is fitted by fit_imp.py into data/imp-model.json; base() and the feature order must stay
-// identical to the Python version there.
+// Local IMP estimate for matches STRATZ has not scored (it never scores matches with Kez). fit_imp.py fits two
+// models into data/imp-model.json: "minute" also reads STRATZ's per-minute snapshot against the hero average
+// (stored in data/stratz.json), "basic" uses end-of-game stats only. base(), minuteFeatures() and the feature
+// order must stay identical to fit_imp.py and stratz.py.
 const KEYS = ["k", "d", "a", "lh", "dn", "gpm", "xpm", "hd", "td", "hh", "nw", "lvl"];
 
 function base(p, team, enemy, m, won) {
@@ -32,10 +33,32 @@ function base(p, team, enemy, m, won) {
   return f;
 }
 
+// Mirrors stratz.minute_features: at 5-30 minutes and the last minute, each stat against the hero average.
+const MARKS = [5, 10, 15, 20, 25, 30];
+const PAIRS = 9;
+
+function minuteFeatures(entry) {
+  const end = Math.max(...Object.keys(entry.t).map(Number));
+  const out = [];
+  for (const t of [...MARKS, end]) {
+    const values = entry.t[t] ?? entry.t[end];
+    for (let i = 0; i < PAIRS; i++) {
+      const mine = values[i];
+      const hero = values[i + PAIRS];
+      out.push(mine - hero, Math.log((mine + 1) / (hero + 1)));
+    }
+  }
+  out.push(entry.lane);
+  return out;
+}
+
 const dot = (a, b) => a.reduce((s, x, i) => s + x * b[i], 0);
 
-// Estimated IMP by player slot, or null when the match lacks a duration or a player's position.
-export function estimateImp(model, match) {
+// { imp: estimated IMP by player slot, model: "minute" | "basic" }, or null when the match lacks a duration
+// or a player's position. The minute model needs a snapshot for all ten players.
+export function estimateImp(models, match, minute = null) {
+  const useMinute = Boolean(models?.minute && minute && match.players.every((p) => minute[p.slot]));
+  const model = useMinute ? models.minute : models?.basic;
   if (!model?.groups || !match.duration || match.players.some((p) => !p.pos)) return null;
   const m = match.duration / 60;
   const radiant = (p) => p.slot < 128;
@@ -63,6 +86,7 @@ export function estimateImp(model, match) {
         for (const n of model.kz) x.push(o ? o.z[n] : 0);
       }
     }
+    if (useMinute) x.push(...minuteFeatures(minute[p.slot]));
     const group = model.groups[`${p.pos}-${won ? 1 : 0}`];
     if (!group) return null;
     let value = group.b + dot(group.w, x) + (model.hero_offset[`${p.hero}-${p.pos}`] ?? 0);
@@ -78,5 +102,5 @@ export function estimateImp(model, match) {
     const { knots, c } = model.calib;
     result[p.slot] = c[0] + c[1] * value + knots.reduce((s, kn, i) => s + c[i + 2] * Math.max(value - kn, 0), 0);
   }
-  return result;
+  return { imp: result, model: useMinute ? "minute" : "basic" };
 }
