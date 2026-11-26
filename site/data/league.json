@@ -6,12 +6,16 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-26T01:04:12.915843+00:00",
+  "generated_at_utc": "2026-11-26T03:35:25.131938+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
     "match_ids_returned": 19,
-    "matches_available": 18,
+    "matches_available": 14,
+    "season_start_utc": "2026-09-12T15:00:00+00:00",
+    "core_roster_seed_end_utc": "2026-11-26T15:00:00+00:00",
+    "excluded_before_season": 4,
+    "excluded_without_core_player": 0,
     "unavailable_matches": [],
     "anonymous_player_slots": 0,
     "incomplete_roster_match_ids": [
@@ -21,33 +25,20 @@
     "anonymous_daily_quota_exhausted": false
   },
   "player_names": {
-    "122251899": "KKEN",
     "127811390": "烏屋茶房",
     "135794101": "飛靴点金聖劍の神！薇苒沈次郎です",
     "136619313": "WC.BCSZSZ",
-    "137665114": "此间乐不思蜀",
     "138814542": "坂",
-    "138832851": "盗书空间",
-    "138920607": "霸气大爷",
-    "139649281": "平湖秋月丶",
     "140721966": "Hayabusa",
-    "158575430": "飞总今天赢了吗",
-    "179241773": "山西大同钢化膜",
-    "182576139": "狼JOKER",
     "182754056": "nameless422",
-    "192820566": "系从尚父出，术奉武侯来！",
     "193915131": "水上由岐",
     "243513067": "别信我发的链接和图片",
     "255076729": "Stellaris",
     "274556888": "通天河灵感大王",
     "292823960": "最上30",
     "301344612": "cat spirit-60",
-    "336663862": "杨柳春风一杯酒",
     "341531496": "我永远喜欢椎名真昼",
-    "353392019": "兴复汉室，还于旧都",
     "372120492": "volatil",
-    "472620947": "drone pudding",
-    "488258433": "koromo",
     "883819932": "被狼认可的牧羊人",
     "1007302804": "飞鞋计划",
     "1068845781": "Reisen suki",
@@ -55,315 +46,65 @@
     "1130047837": "昭昭"
   },
   "opendota_rank_tiers": {
-    "122251899": 73,
     "127811390": 80,
     "135794101": 52,
     "136619313": 72,
-    "137665114": 45,
     "138814542": 61,
-    "138832851": 65,
-    "138920607": 64,
-    "139649281": 80,
     "140721966": 80,
-    "158575430": 65,
-    "179241773": 74,
-    "182576139": 41,
     "182754056": 54,
-    "192820566": 53,
     "193915131": 75,
     "243513067": 75,
     "255076729": 80,
     "274556888": 71,
     "292823960": 75,
     "301344612": 64,
-    "336663862": 62,
     "341531496": 80,
-    "353392019": 63,
     "372120492": 55,
-    "472620947": 52,
     "883819932": 80,
     "1007302804": 73,
     "1068845781": 72,
     "1098196409": 62,
     "1130047837": 80
   },
+  "player_groups": {
+    "core": [
+      127811390,
+      135794101,
+      136619313,
+      138814542,
+      140721966,
+      182754056,
+      193915131,
+      243513067,
+      255076729,
+      274556888,
+      292823960,
+      301344612,
+      341531496,
+      372120492,
+      883819932,
+      1007302804,
+      1068845781,
+      1098196409,
+      1130047837
+    ],
+    "neighbour": [
+      122251899,
+      137665114,
+      138832851,
+      138920607,
+      139649281,
+      158575430,
+      179241773,
+      182576139,
+      192820566,
+      336663862,
+      353392019,
+      472620947,
+      488258433
+    ]
+  },
   "matches": [
-    {
-      "match_id": 8657068580,
-      "league_id": 19224,
-      "start_time": 1768913271,
-      "duration": 1785,
-      "radiant_win": false,
-      "players": [
-        {
-          "account_id": 137665114,
-          "personaname": "此间乐不思蜀",
-          "player_slot": 0,
-          "hero_id": 2
-        },
-        {
-          "account_id": 192820566,
-          "personaname": "系从尚父出，术奉武侯来！",
-          "player_slot": 1,
-          "hero_id": 19
-        },
-        {
-          "account_id": 274556888,
-          "personaname": "通天河灵感大王",
-          "player_slot": 2,
-          "hero_id": 102
-        },
-        {
-          "account_id": 138814542,
-          "personaname": "坂",
-          "player_slot": 3,
-          "hero_id": 9
-        },
-        {
-          "account_id": 372120492,
-          "personaname": "volatil",
-          "player_slot": 4,
-          "hero_id": 73
-        },
-        {
-          "account_id": 158575430,
-          "personaname": "飞总今天赢了吗",
-          "player_slot": 128,
-          "hero_id": 53
-        },
-        {
-          "account_id": 179241773,
-          "personaname": "山西大同钢化膜",
-          "player_slot": 129,
-          "hero_id": 51
-        },
-        {
-          "account_id": 182576139,
-          "personaname": "狼JOKER",
-          "player_slot": 130,
-          "hero_id": 108
-        },
-        {
-          "account_id": 138832851,
-          "personaname": "盗书空间",
-          "player_slot": 131,
-          "hero_id": 10
-        },
-        {
-          "account_id": 488258433,
-          "personaname": "koromo",
-          "player_slot": 132,
-          "hero_id": 101
-        }
-      ]
-    },
-    {
-      "match_id": 8993268767,
-      "league_id": 19224,
-      "start_time": 1789131306,
-      "duration": 2282,
-      "radiant_win": false,
-      "players": [
-        {
-          "account_id": 336663862,
-          "personaname": "杨柳春风一杯酒",
-          "player_slot": 0,
-          "hero_id": 8
-        },
-        {
-          "account_id": 138920607,
-          "personaname": "霸气大爷",
-          "player_slot": 1,
-          "hero_id": 26
-        },
-        {
-          "account_id": 472620947,
-          "personaname": "drone pudding",
-          "player_slot": 2,
-          "hero_id": 85
-        },
-        {
-          "account_id": 192820566,
-          "personaname": "系从尚父出，术奉武侯来！",
-          "player_slot": 3,
-          "hero_id": 47
-        },
-        {
-          "account_id": 139649281,
-          "personaname": "平湖秋月丶",
-          "player_slot": 4,
-          "hero_id": 129
-        },
-        {
-          "account_id": 274556888,
-          "personaname": "通天河灵感大王",
-          "player_slot": 128,
-          "hero_id": 74
-        },
-        {
-          "account_id": 158575430,
-          "personaname": "飞总今天赢了吗",
-          "player_slot": 129,
-          "hero_id": 64
-        },
-        {
-          "account_id": 138832851,
-          "personaname": "盗书空间",
-          "player_slot": 130,
-          "hero_id": 119
-        },
-        {
-          "account_id": 353392019,
-          "personaname": "兴复汉室，还于旧都",
-          "player_slot": 131,
-          "hero_id": 98
-        },
-        {
-          "account_id": 122251899,
-          "personaname": "KKEN",
-          "player_slot": 132,
-          "hero_id": 54
-        }
-      ]
-    },
-    {
-      "match_id": 8993415026,
-      "league_id": 19224,
-      "start_time": 1789135938,
-      "duration": 2756,
-      "radiant_win": true,
-      "players": [
-        {
-          "account_id": 138832851,
-          "personaname": "盗书空间",
-          "player_slot": 0,
-          "hero_id": 9
-        },
-        {
-          "account_id": 274556888,
-          "personaname": "通天河灵感大王",
-          "player_slot": 1,
-          "hero_id": 69
-        },
-        {
-          "account_id": 122251899,
-          "personaname": "KKEN",
-          "player_slot": 2,
-          "hero_id": 71
-        },
-        {
-          "account_id": 353392019,
-          "personaname": "兴复汉室，还于旧都",
-          "player_slot": 3,
-          "hero_id": 120
-        },
-        {
-          "account_id": 336663862,
-          "personaname": "杨柳春风一杯酒",
-          "player_slot": 4,
-          "hero_id": 21
-        },
-        {
-          "account_id": 158575430,
-          "personaname": "飞总今天赢了吗",
-          "player_slot": 128,
-          "hero_id": 22
-        },
-        {
-          "account_id": 138920607,
-          "personaname": "霸气大爷",
-          "player_slot": 129,
-          "hero_id": 108
-        },
-        {
-          "account_id": 139649281,
-          "personaname": "平湖秋月丶",
-          "player_slot": 130,
-          "hero_id": 20
-        },
-        {
-          "account_id": 192820566,
-          "personaname": "系从尚父出，术奉武侯来！",
-          "player_slot": 131,
-          "hero_id": 128
-        },
-        {
-          "account_id": 472620947,
-          "personaname": "drone pudding",
-          "player_slot": 132,
-          "hero_id": 123
-        }
-      ]
-    },
-    {
-      "match_id": 8993543199,
-      "league_id": 19224,
-      "start_time": 1789139802,
-      "duration": 2576,
-      "radiant_win": false,
-      "players": [
-        {
-          "account_id": 139649281,
-          "personaname": "平湖秋月丶",
-          "player_slot": 0,
-          "hero_id": 7
-        },
-        {
-          "account_id": 122251899,
-          "personaname": "KKEN",
-          "player_slot": 1,
-          "hero_id": 62
-        },
-        {
-          "account_id": 138832851,
-          "personaname": "盗书空间",
-          "player_slot": 2,
-          "hero_id": 54
-        },
-        {
-          "account_id": 472620947,
-          "personaname": "drone pudding",
-          "player_slot": 3,
-          "hero_id": 31
-        },
-        {
-          "account_id": 336663862,
-          "personaname": "杨柳春风一杯酒",
-          "player_slot": 4,
-          "hero_id": 13
-        },
-        {
-          "account_id": 274556888,
-          "personaname": "通天河灵感大王",
-          "player_slot": 128,
-          "hero_id": 41
-        },
-        {
-          "account_id": 158575430,
-          "personaname": "飞总今天赢了吗",
-          "player_slot": 129,
-          "hero_id": 17
-        },
-        {
-          "account_id": 138920607,
-          "personaname": "霸气大爷",
-          "player_slot": 130,
-          "hero_id": 87
-        },
-        {
-          "account_id": 353392019,
-          "personaname": "兴复汉室，还于旧都",
-          "player_slot": 131,
-          "hero_id": 88
-        },
-        {
-          "account_id": 192820566,
-          "personaname": "系从尚父出，术奉武侯来！",
-          "player_slot": 132,
-          "hero_id": 36
-        }
-      ]
-    },
     {
       "match_id": 9061300227,
       "league_id": 19224,
@@ -1329,6 +1070,288 @@
           "hero_id": 111
         }
       ]
+    }
+  ],
+  "excluded_matches": [
+    {
+      "match_id": 8657068580,
+      "league_id": 19224,
+      "start_time": 1768913271,
+      "duration": 1785,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 137665114,
+          "personaname": "此间乐不思蜀",
+          "player_slot": 0,
+          "hero_id": 2
+        },
+        {
+          "account_id": 192820566,
+          "personaname": "系从尚父出，术奉武侯来！",
+          "player_slot": 1,
+          "hero_id": 19
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 2,
+          "hero_id": 102
+        },
+        {
+          "account_id": 138814542,
+          "personaname": "坂",
+          "player_slot": 3,
+          "hero_id": 9
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 4,
+          "hero_id": 73
+        },
+        {
+          "account_id": 158575430,
+          "personaname": "飞总今天赢了吗",
+          "player_slot": 128,
+          "hero_id": 53
+        },
+        {
+          "account_id": 179241773,
+          "personaname": "山西大同钢化膜",
+          "player_slot": 129,
+          "hero_id": 51
+        },
+        {
+          "account_id": 182576139,
+          "personaname": "狼JOKER",
+          "player_slot": 130,
+          "hero_id": 108
+        },
+        {
+          "account_id": 138832851,
+          "personaname": "盗书空间",
+          "player_slot": 131,
+          "hero_id": 10
+        },
+        {
+          "account_id": 488258433,
+          "personaname": "koromo",
+          "player_slot": 132,
+          "hero_id": 101
+        }
+      ],
+      "exclusion_reason": "before_season"
+    },
+    {
+      "match_id": 8993268767,
+      "league_id": 19224,
+      "start_time": 1789131306,
+      "duration": 2282,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 336663862,
+          "personaname": "杨柳春风一杯酒",
+          "player_slot": 0,
+          "hero_id": 8
+        },
+        {
+          "account_id": 138920607,
+          "personaname": "霸气大爷",
+          "player_slot": 1,
+          "hero_id": 26
+        },
+        {
+          "account_id": 472620947,
+          "personaname": "drone pudding",
+          "player_slot": 2,
+          "hero_id": 85
+        },
+        {
+          "account_id": 192820566,
+          "personaname": "系从尚父出，术奉武侯来！",
+          "player_slot": 3,
+          "hero_id": 47
+        },
+        {
+          "account_id": 139649281,
+          "personaname": "平湖秋月丶",
+          "player_slot": 4,
+          "hero_id": 129
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 128,
+          "hero_id": 74
+        },
+        {
+          "account_id": 158575430,
+          "personaname": "飞总今天赢了吗",
+          "player_slot": 129,
+          "hero_id": 64
+        },
+        {
+          "account_id": 138832851,
+          "personaname": "盗书空间",
+          "player_slot": 130,
+          "hero_id": 119
+        },
+        {
+          "account_id": 353392019,
+          "personaname": "兴复汉室，还于旧都",
+          "player_slot": 131,
+          "hero_id": 98
+        },
+        {
+          "account_id": 122251899,
+          "personaname": "KKEN",
+          "player_slot": 132,
+          "hero_id": 54
+        }
+      ],
+      "exclusion_reason": "before_season"
+    },
+    {
+      "match_id": 8993415026,
+      "league_id": 19224,
+      "start_time": 1789135938,
+      "duration": 2756,
+      "radiant_win": true,
+      "players": [
+        {
+          "account_id": 138832851,
+          "personaname": "盗书空间",
+          "player_slot": 0,
+          "hero_id": 9
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 1,
+          "hero_id": 69
+        },
+        {
+          "account_id": 122251899,
+          "personaname": "KKEN",
+          "player_slot": 2,
+          "hero_id": 71
+        },
+        {
+          "account_id": 353392019,
+          "personaname": "兴复汉室，还于旧都",
+          "player_slot": 3,
+          "hero_id": 120
+        },
+        {
+          "account_id": 336663862,
+          "personaname": "杨柳春风一杯酒",
+          "player_slot": 4,
+          "hero_id": 21
+        },
+        {
+          "account_id": 158575430,
+          "personaname": "飞总今天赢了吗",
+          "player_slot": 128,
+          "hero_id": 22
+        },
+        {
+          "account_id": 138920607,
+          "personaname": "霸气大爷",
+          "player_slot": 129,
+          "hero_id": 108
+        },
+        {
+          "account_id": 139649281,
+          "personaname": "平湖秋月丶",
+          "player_slot": 130,
+          "hero_id": 20
+        },
+        {
+          "account_id": 192820566,
+          "personaname": "系从尚父出，术奉武侯来！",
+          "player_slot": 131,
+          "hero_id": 128
+        },
+        {
+          "account_id": 472620947,
+          "personaname": "drone pudding",
+          "player_slot": 132,
+          "hero_id": 123
+        }
+      ],
+      "exclusion_reason": "before_season"
+    },
+    {
+      "match_id": 8993543199,
+      "league_id": 19224,
+      "start_time": 1789139802,
+      "duration": 2576,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 139649281,
+          "personaname": "平湖秋月丶",
+          "player_slot": 0,
+          "hero_id": 7
+        },
+        {
+          "account_id": 122251899,
+          "personaname": "KKEN",
+          "player_slot": 1,
+          "hero_id": 62
+        },
+        {
+          "account_id": 138832851,
+          "personaname": "盗书空间",
+          "player_slot": 2,
+          "hero_id": 54
+        },
+        {
+          "account_id": 472620947,
+          "personaname": "drone pudding",
+          "player_slot": 3,
+          "hero_id": 31
+        },
+        {
+          "account_id": 336663862,
+          "personaname": "杨柳春风一杯酒",
+          "player_slot": 4,
+          "hero_id": 13
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 128,
+          "hero_id": 41
+        },
+        {
+          "account_id": 158575430,
+          "personaname": "飞总今天赢了吗",
+          "player_slot": 129,
+          "hero_id": 17
+        },
+        {
+          "account_id": 138920607,
+          "personaname": "霸气大爷",
+          "player_slot": 130,
+          "hero_id": 87
+        },
+        {
+          "account_id": 353392019,
+          "personaname": "兴复汉室，还于旧都",
+          "player_slot": 131,
+          "hero_id": 88
+        },
+        {
+          "account_id": 192820566,
+          "personaname": "系从尚父出，术奉武侯来！",
+          "player_slot": 132,
+          "hero_id": 36
+        }
+      ],
+      "exclusion_reason": "before_season"
     }
   ]
 }
