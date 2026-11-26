@@ -332,6 +332,10 @@ function showCoverageNotice(data) {
   if (unavailable.length) messages.push(`${unavailable.length} 场尚未取得公开详情`);
   if (anonymous) messages.push(`${anonymous} 个选手位为匿名`);
   if (incomplete.length) messages.push(`已排除 ${incomplete.length} 场公开阵容不完整的战报`);
+  const beforeSeason = Number(metadata.excluded_before_season || 0);
+  const withoutCore = Number(metadata.excluded_without_core_player || 0);
+  if (beforeSeason) messages.push(`9 月 13 日之前的 ${beforeSeason} 场不计入`);
+  if (withoutCore) messages.push(`${withoutCore} 场没有本队选手，不计入`);
   if (!messages.length) {
     elements.coverageNotice.hidden = true;
     return;

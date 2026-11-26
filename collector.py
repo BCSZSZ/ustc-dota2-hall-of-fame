@@ -5,7 +5,7 @@ import json
 import os
 import random
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -19,6 +19,12 @@ STEAM_ACCOUNT_ID_OFFSET = 76_561_197_960_265_728
 DEFAULT_LEAGUE_ID = 19224
 DEFAULT_OUTPUT = Path("site/data/league.json")
 PLAYER_SLOTS = {*range(5), *range(128, 133)}
+JST = timezone(timedelta(hours=9))
+# Matches before this moment never count. Players seen only before it are "neighbours".
+SEASON_START = int(datetime(2026, 9, 13, tzinfo=JST).timestamp())
+# Every player in a season match before this moment seeds the core roster. Later
+# matches count only if they include a core player, and then add their players to it.
+CORE_ROSTER_SEED_END = int(datetime(2026, 11, 27, tzinfo=JST).timestamp())
 
 
 class LeagueCollectionError(RuntimeError):
@@ -203,13 +209,15 @@ def _load_existing(
     if int(payload.get("league_id") or 0) != league_id:
         return {}, {}, {}
     result: dict[int, dict[str, Any]] = {}
-    for match in payload.get("matches", []):
+    for match in [*payload.get("matches", []), *payload.get("excluded_matches", [])]:
         if (
             isinstance(match, dict)
             and int(match.get("match_id") or 0) > 0
             and _has_complete_roster(match)
         ):
-            result[int(match["match_id"])] = match
+            result[int(match["match_id"])] = {
+                key: value for key, value in match.items() if key != "exclusion_reason"
+            }
     names = payload.get("player_names")
     rank_tiers = payload.get("opendota_rank_tiers")
     return (
@@ -217,6 +225,31 @@ def _load_existing(
         names if isinstance(names, dict) else {},
         rank_tiers if isinstance(rank_tiers, dict) else {},
     )
+
+
+def _account_ids(match: dict[str, Any]) -> set[int]:
+    return {player["account_id"] for player in match["players"] if player["account_id"] is not None}
+
+
+def classify_matches(
+    matches: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[int], list[int]]:
+    """Split complete matches into counted and excluded ones, plus core and neighbour IDs."""
+    counted: list[dict[str, Any]] = []
+    excluded: list[dict[str, Any]] = []
+    core: set[int] = set()
+    before_season: set[int] = set()
+    for match in sorted(matches, key=lambda item: (item["start_time"], item["match_id"])):
+        account_ids = _account_ids(match)
+        if match["start_time"] < SEASON_START:
+            before_season |= account_ids
+            excluded.append({**match, "exclusion_reason": "before_season"})
+        elif match["start_time"] < CORE_ROSTER_SEED_END or account_ids & core:
+            core |= account_ids
+            counted.append(match)
+        else:
+            excluded.append({**match, "exclusion_reason": "no_core_player"})
+    return counted, excluded, sorted(core), sorted(before_season - core)
 
 
 def _known_account_ids(matches: list[dict[str, Any]]) -> list[int]:
@@ -327,6 +360,7 @@ def collect_league_data(
     refresh_recent: int = 5,
     client: OpenDotaLeagueClient,
     steam_client: httpx.Client | None = None,
+    incremental: bool = False,
 ) -> dict[str, Any]:
     league = client.get_json(f"/leagues/{league_id}")
     match_ids_raw = client.get_json(f"/leagues/{league_id}/matchIds")
@@ -337,7 +371,7 @@ def collect_league_data(
 
     match_ids = sorted({int(match_id) for match_id in match_ids_raw if int(match_id) > 0})
     existing, player_names, previous_rank_tiers = _load_existing(output_path, league_id)
-    refresh_ids = set(match_ids[-max(0, refresh_recent) :])
+    refresh_ids = set(match_ids[-refresh_recent:]) if refresh_recent > 0 else set()
     unavailable: list[dict[str, Any]] = []
     incomplete_rosters: list[int] = []
     matches: dict[int, dict[str, Any]] = {}
@@ -363,11 +397,23 @@ def collect_league_data(
             else:
                 unavailable.append({"match_id": match_id, "reason": str(error)})
 
-    ordered_matches = [matches[match_id] for match_id in match_ids if match_id in matches]
+    ordered_matches, excluded_matches, core_ids, neighbour_ids = classify_matches(
+        [matches[match_id] for match_id in match_ids if match_id in matches]
+    )
     account_ids = _known_account_ids(ordered_matches)
     if steam_client is not None:
         player_names = _refresh_player_names(account_ids, player_names, steam_client)
-    opendota_rank_tiers = _refresh_opendota_rank_tiers(account_ids, previous_rank_tiers, client)
+    if incremental:
+        # Quick runs only add new matches; the daily full run refreshes ranks and names.
+        opendota_rank_tiers = {
+            str(account_id): rank_tier
+            for account_id in account_ids
+            if (rank_tier := _valid_rank_tier(previous_rank_tiers.get(str(account_id)))) is not None
+        }
+    else:
+        opendota_rank_tiers = _refresh_opendota_rank_tiers(
+            account_ids, previous_rank_tiers, client
+        )
     anonymous_slots = sum(
         1
         for match in ordered_matches
@@ -388,6 +434,14 @@ def collect_league_data(
         "metadata": {
             "match_ids_returned": len(match_ids),
             "matches_available": len(ordered_matches),
+            "season_start_utc": datetime.fromtimestamp(SEASON_START, UTC).isoformat(),
+            "core_roster_seed_end_utc": datetime.fromtimestamp(CORE_ROSTER_SEED_END, UTC).isoformat(),
+            "excluded_before_season": sum(
+                match["exclusion_reason"] == "before_season" for match in excluded_matches
+            ),
+            "excluded_without_core_player": sum(
+                match["exclusion_reason"] == "no_core_player" for match in excluded_matches
+            ),
             "unavailable_matches": unavailable,
             "anonymous_player_slots": anonymous_slots,
             "incomplete_roster_match_ids": incomplete_rosters,
@@ -396,7 +450,9 @@ def collect_league_data(
         },
         "player_names": player_names,
         "opendota_rank_tiers": opendota_rank_tiers,
+        "player_groups": {"core": core_ids, "neighbour": neighbour_ids},
         "matches": ordered_matches,
+        "excluded_matches": excluded_matches,
     }
 
 
@@ -417,6 +473,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--league-id", type=int, default=DEFAULT_LEAGUE_ID)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--refresh-recent", type=int, default=5)
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="only fetch new matches; reuse cached nicknames and rank tiers",
+    )
     parser.add_argument(
         "--max-paid-calls",
         type=int,
@@ -439,7 +500,8 @@ def main(argv: list[str] | None = None) -> int:
             output_path=args.output,
             refresh_recent=max(0, args.refresh_recent),
             client=client,
-            steam_client=steam_client,
+            steam_client=None if args.incremental else steam_client,
+            incremental=args.incremental,
         )
     write_snapshot(args.output, payload)
     metadata = payload["metadata"]

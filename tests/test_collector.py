@@ -17,7 +17,7 @@ def make_match(match_id: int, *, league_id: int = 19224) -> dict[str, Any]:
     return {
         "match_id": match_id,
         "leagueid": league_id,
-        "start_time": 1_800_000_000 + match_id,
+        "start_time": 1_790_000_000 + match_id % 100_000,  # inside the core-roster seed window
         "duration": 2_400,
         "radiant_win": True,
         "players": [
@@ -270,3 +270,65 @@ def test_opendota_client_caps_paid_retries(monkeypatch: pytest.MonkeyPatch) -> N
             None,
             "Bearer test-key",
         ]
+
+
+def test_classify_matches_applies_season_start_and_core_roster() -> None:
+    from collector import CORE_ROSTER_SEED_END, SEASON_START, classify_matches
+
+    def at(match_id: int, start_time: int, account_ids: list[int]) -> dict[str, Any]:
+        match = normalise_match(make_match(match_id), 19224)
+        match["start_time"] = start_time
+        for player, account_id in zip(match["players"], account_ids, strict=True):
+            player["account_id"] = account_id
+        return match
+
+    old_only = list(range(1, 11))
+    seed = [1, *range(11, 20)]
+    counted, excluded, core, neighbour = classify_matches(
+        [
+            at(1, SEASON_START - 1, old_only),
+            at(2, SEASON_START, seed),
+            at(3, CORE_ROSTER_SEED_END + 10, list(range(30, 40))),  # nobody from the core
+            at(4, CORE_ROSTER_SEED_END + 20, [11, *range(40, 49)]),  # one core player
+            at(5, CORE_ROSTER_SEED_END + 30, [40, *range(50, 59)]),  # core via match 4
+        ]
+    )
+
+    assert [match["match_id"] for match in counted] == [2, 4, 5]
+    assert [(match["match_id"], match["exclusion_reason"]) for match in excluded] == [
+        (1, "before_season"),
+        (3, "no_core_player"),
+    ]
+    assert 1 in core and 40 in core and 30 not in core
+    assert neighbour == list(range(2, 11))
+
+
+def test_incremental_run_fetches_only_new_matches_and_reuses_ranks(tmp_path: Path) -> None:
+    output = tmp_path / "league.json"
+    write_snapshot(
+        output,
+        {
+            "league_id": 19224,
+            "matches": [normalise_match(make_match(1), 19224)],
+            "opendota_rank_tiers": {"1000": 55, "1001": 999},
+        },
+    )
+    client = FakeClient(
+        {
+            "/leagues/19224": {"name": "Test League"},
+            "/leagues/19224/matchIds": [1, 2],
+            "/matches/2": make_match(2),
+        }
+    )
+
+    snapshot = collect_league_data(
+        league_id=19224,
+        output_path=output,
+        refresh_recent=0,
+        client=client,  # type: ignore[arg-type]
+        incremental=True,
+    )
+
+    assert client.requested == ["/leagues/19224", "/leagues/19224/matchIds", "/matches/2"]
+    assert [match["match_id"] for match in snapshot["matches"]] == [1, 2]
+    assert snapshot["opendota_rank_tiers"] == {"1000": 55}

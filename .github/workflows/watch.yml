@@ -1,0 +1,61 @@
+name: Watch for new league matches
+
+# Every 10 minutes (off the top of the hour), compare OpenDota's league match IDs with the
+# snapshot on main and start an incremental collection only when a new match appears.
+on:
+  schedule:
+    - cron: "7-59/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: league-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger collection when OpenDota lists a new match
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          busy=$(gh run list -R "$REPO" -w pages.yml -L 10 --json status \
+            --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$busy" -gt 0 ]; then
+            echo "A collection run is already queued or running."
+            exit 0
+          fi
+
+          last_failure=$(gh run list -R "$REPO" -w pages.yml -L 1 --json conclusion,updatedAt \
+            --jq '.[] | select(.conclusion == "failure") | .updatedAt')
+          if [ -n "$last_failure" ] && [ $(( $(date +%s) - $(date -d "$last_failure" +%s) )) -lt 3600 ]; then
+            echo "The last collection failed less than an hour ago; waiting before retrying."
+            exit 0
+          fi
+
+          if ! remote=$(curl -fsS --retry 2 --max-time 20 https://api.opendota.com/api/leagues/19224/matchIds); then
+            echo "::warning::OpenDota match IDs were unavailable; will check again next time."
+            exit 0
+          fi
+
+          known=$(gh api -H "Accept: application/vnd.github.raw" \
+            "repos/$REPO/contents/site/data/league.json?ref=main" \
+            | jq -c '[.matches[].match_id, (.excluded_matches // [])[].match_id,
+                      (.metadata.incomplete_roster_match_ids // [])[],
+                      (.metadata.unavailable_matches // [])[].match_id]')
+          new=$(jq -nc --argjson remote "$remote" --argjson known "$known" '$remote - $known')
+          if [ "$new" = "[]" ]; then
+            echo "No new matches."
+            exit 0
+          fi
+
+          echo "New match IDs: $new"
+          gh workflow run pages.yml -R "$REPO" --ref main -f mode=incremental
