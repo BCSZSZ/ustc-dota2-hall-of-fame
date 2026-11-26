@@ -4,7 +4,7 @@ import {
   MIN_RATE_GAMES, average, averageDims, bindRange, el, formatDate, formatDuration, hero, heroIcon, heroLabel, item, itemLabel, kda,
   loadData, matchHref, minutes, percent, playerHref, playerName, playerSummary, rangeParams, rate, record, section, smoothed,
   sortableTable, state, statCard, teamPanel, visibleMatches, won,
-} from "./stats-core.js?v=1";
+} from "./stats-core.js?v=2";
 
 function renderMatches(panel, matches) {
   panel.append(section("比赛", `共 ${matches.length} 场。卡片显示每位选手的英雄、号位、装备、评级和本局称号，悬停称号或评级可看判定条件；点“详情”打开这场比赛的页面，查看 BP、完整数据、出装时间、经济曲线、地图和死亡复盘。`));

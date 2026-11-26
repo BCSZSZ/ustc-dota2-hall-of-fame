@@ -1,6 +1,6 @@
 // Data, scoring and components shared by the stats list, match and player pages.
 
-import { loadPlayerAliases } from "./shared-mmr.js?v=2";
+import { loadPlayerAliases } from "./shared-mmr.js?v=3";
 
 const DAY_SECONDS = 86400;
 const MIN_RATE_GAMES = 5;

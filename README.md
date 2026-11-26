@@ -45,7 +45,5 @@ python replays.py parse --data-dir site/data
 
 基础分优先采用手填 MMR。缺手填分时，用 OpenDota 最近有效段位对应区间的中点粗估。冠绝一世没有固定上限，暂取 6000。缺段位的玩家暂用联赛段位估分的中位数。以基础分为起点回放有效内战，按个人有效场数采纳 Elo 修正，权重为 **min(50%, 场数 ÷ (场数 + 36))**。
 
-共享分数和玩家 ID 保存在 Sites 的 D1 数据库（`mmr_state` 的 `ratings`、`aliases` 两列，共用一个版本号做冲突检查），和每日生成的联赛快照独立。[服务源码](mmr-api/worker) · [站点身份](mmr-api/.openai/hosting.json) · [数据库迁移](mmr-api/drizzle)
-
-更新服务时在对应的 Sites 源码副本中运行 **node build.mjs**，沿用现有站点身份打包发布。
+共享分数和玩家 ID 保存在 AWS 东京区的 DynamoDB，共用一个版本号做冲突检查。GitHub Pages 通过 AWS HTTP API 读取和保存共享数据，联赛快照继续由原来的采集工作流发布。[共享 API](https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com/api/mmr) · [服务源码和发布说明](mmr-aws)
 

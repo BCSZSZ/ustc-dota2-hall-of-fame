@@ -5,7 +5,7 @@ import { matchMap } from "./map.js?v=2";
 import {
   LANE_TEXT, SMVP_MARGIN, el, formatDate, formatDuration, hero, heroIcon, heroLabel, isMvp, isRadiant,
   item, itemIcon, loadData, minutes, mvpBadge, playerLink, scoreText, state, teamPanel,
-} from "./stats-core.js?v=1";
+} from "./stats-core.js?v=2";
 
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
 const TOWER_TIERS = { 1: "一塔", 2: "二塔", 3: "高地塔", 4: "基地塔" };

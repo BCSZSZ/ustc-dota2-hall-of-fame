@@ -1,4 +1,4 @@
-const endpoint = "https://ustc-dota2-mmr-api.liaowang586.chatgpt.site/api/mmr";
+const endpoint = "https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com/api/mmr";
 export const MAX_ALIAS_CHARS = 16;
 const HIDDEN_CHARS = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 
@@ -43,8 +43,7 @@ export async function loadSharedMmr() {
 // Pages still render with Steam names when the shared service is slow or down.
 export async function loadPlayerAliases() {
   try {
-    const { state } = await requestState({ cache: "no-store" }, 4000);
-    return state.aliases ?? {};
+    return (await loadSharedMmr()).aliases ?? {};
   } catch (error) {
     console.error("Could not read player aliases", error);
     return {};
