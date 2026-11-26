@@ -10,7 +10,6 @@ const state = {
   names: {},
   heroes: {},
   items: {},
-  talents: {},
   min: 0,
   max: 0,
   from: 0,
@@ -293,35 +292,24 @@ function matchDetail(match) {
     map);
 }
 
-const TALENT_LEVELS = { 1: 10, 2: 15, 3: 20, 4: 25 };
-
-function talentTree(player) {
-  const options = state.talents[player.hero] || [];
-  const textOf = (id) => options.find((talent) => talent.id === id)?.text || "未知天赋";
-  const picks = new Map((player.talents || []).map((pick) => [pick.tier, pick]));
-  const lines = [4, 3, 2, 1].filter((tier) => picks.has(tier)).map((tier) => {
-    const pick = picks.get(tier);
-    return `${TALENT_LEVELS[tier]} 级：${textOf(pick.id)}${pick.both ? "（后来另一侧也点了）" : ""}`;
-  });
-  return el("span", { class: "talent-tree", title: lines.length ? lines.join("\n") : "没有天赋记录" },
-    [4, 3, 2, 1].map((tier) => el("i", { class: picks.has(tier) ? (picks.get(tier).both ? "on both" : "on") : "" }, TALENT_LEVELS[tier])));
-}
-
 function playerRow(match, player) {
-  const kills = player.k ?? 0;
+  const titles = player.titles || [];
   return el("div", { class: `player-row${isMvp(match, player) ? " is-mvp" : ""}` },
-    heroIcon(player.hero),
+    el("span", { class: "pr-hero" }, heroIcon(player.hero),
+      player.pos ? el("i", { class: "pr-pos", title: `${player.pos} 号位` }, player.pos) : null),
     el("span", { class: "pr-who" },
       el("span", { class: "pr-name" }, playerLink(player.account_id)),
-      el("span", { class: "pr-sub" }, `${player.pos ? `${player.pos}号位 · ` : ""}${hero(player.hero).name}`, (player.titles || []).map(titleChip))),
-    el("span", { class: "pr-kda", title: "击杀 / 死亡 / 助攻" }, `${kills}/${player.d ?? 0}/${player.a ?? 0}`),
-    el("span", { class: "pr-score", title: "综合评分" }, gradeBadge(player), scoreText(player.score)),
+      el("span", { class: "pr-sub" }, hero(player.hero).name)),
+    el("span", { class: "pr-kda", title: "击杀 / 死亡 / 助攻" },
+      el("b", { class: "k" }, player.k ?? 0), "/", el("b", { class: "d" }, player.d ?? 0), "/", el("b", { class: "a" }, player.a ?? 0)),
+    el("span", { class: "pr-score", title: "综合评分" }, gradeBadge(player), el("b", {}, scoreText(player.score))),
     el("span", { class: "pr-nw", title: `净值 ${(player.nw ?? 0).toLocaleString()} · GPM ${player.gpm ?? "—"}` },
       player.nw ? `${(player.nw / 1000).toFixed(1)}k` : "—"),
-    el("span", { class: "pr-items" },
-      Array.from({ length: 6 }, (_, slot) => (player.items[slot] ? itemIcon(player.items[slot]) : el("span", { class: "item-img empty" }))),
-      player.neutral ? el("span", { class: "pr-neutral" }, itemIcon(player.neutral)) : el("span", { class: "pr-neutral" }, el("span", { class: "item-img empty" }))),
-    talentTree(player));
+    el("span", { class: "pr-bottom" },
+      el("span", { class: "pr-items" },
+        Array.from({ length: 6 }, (_, slot) => (player.items[slot] ? itemIcon(player.items[slot]) : el("span", { class: "item-img empty" }))),
+        el("span", { class: "pr-neutral" }, player.neutral ? itemIcon(player.neutral) : el("span", { class: "item-img empty" }))),
+      el("span", { class: "pr-titles" }, titles.map((name) => titleChip(name)))));
 }
 
 function teamPanel(match, radiant) {
@@ -334,12 +322,13 @@ function teamPanel(match, radiant) {
       el("span", { class: teamWon ? "result win" : "result" }, teamWon ? "胜" : "负"),
       el("small", {}, `击杀 ${radiant ? match.radiant_score : match.dire_score} · 总净值 ${(worth / 1000).toFixed(1)}k`)),
     el("div", { class: "team-cols", "aria-hidden": "true" },
-      el("span", {}, "英雄"), el("span", {}, "选手"), el("span", {}, "K/D/A"), el("span", {}, "评分"), el("span", {}, "净值"), el("span", {}, "装备"), el("span", {}, "天赋")),
+      el("span", { class: "pr-hero" }, "英雄"), el("span", { class: "pr-who" }, "选手"), el("span", { class: "pr-kda" }, "K/D/A"),
+      el("span", { class: "pr-score" }, "评分"), el("span", { class: "pr-nw" }, "净值")),
     players.map((player) => playerRow(match, player)));
 }
 
 function renderMatches(panel, matches) {
-  panel.append(section("比赛", `共 ${matches.length} 场。卡片显示每位选手的英雄、装备、天赋和本局成就，天赋悬停可看具体选择；点“详情”查看 BP、完整数据、出装时间和经济曲线。`));
+  panel.append(section("比赛", `共 ${matches.length} 场。卡片显示每位选手的英雄、号位、装备、评级和本局称号，悬停称号或评级可看判定条件；点“详情”查看 BP、完整数据、出装时间和经济曲线。`));
   for (const match of [...matches].reverse()) {
     const open = state.openMatch === match.match_id;
     const toggle = () => {
@@ -585,7 +574,16 @@ function assignTitles(match) {
 }
 
 const TITLE_TIPS = Object.fromEntries(TITLES.map(({ name, tip }) => [name, tip]));
-const titleChip = (name) => el("span", { class: `title-chip${name.endsWith("MVP") ? " mvp" : ""}`, title: TITLE_TIPS[name] }, `【${name}】`);
+// Gold for honours, blue for "best in the match" stats, red for roasts.
+const TITLE_KIND = {
+  SMVP: "honor", MVP: "honor", 暴走: "honor", 超神: "honor", 屠龙: "honor", 稳: "honor",
+  拆: "stat", 壕: "stat", 就是干: "stat", 奶: "stat", 肉: "stat", 控: "stat", 眼: "stat", 一血: "stat",
+  钢丝C: "roast", 刷了送: "roast", 我的: "roast", 打心底里佩服: "roast", 躺: "roast", 僵: "roast", 浪: "roast",
+};
+const titleChip = (name, count = 0) => el("span", {
+  class: `title-chip ${TITLE_KIND[name] || "stat"}${name.endsWith("MVP") ? " mvp" : ""}`,
+  title: `【${name}】${TITLE_TIPS[name]}`,
+}, count ? `${name} ×${count}` : name);
 
 function averageDims(players) {
   return Object.fromEntries(DIMENSIONS.map(({ key }) => [key, meanOf(players.map((player) => player.dims?.[key]))]));
@@ -775,7 +773,7 @@ function playerDetail(games, matches) {
         el("td", {}, formatDate(game.match.start_time)),
         el("td", {}, heroLabel(game.player.hero)),
         el("td", { class: "num" }, gradeBadge(game.player), scoreText(game.player.score)),
-        el("td", {}, (game.player.titles || []).map(titleChip)),
+        el("td", {}, (game.player.titles || []).map((name) => titleChip(name))),
         el("td", { class: "num" }, game.player.pos ? `${game.player.pos} 号位` : "—"),
         el("td", { class: "num" }, `${game.player.k}/${game.player.d}/${game.player.a}`),
         el("td", { class: "num" }, rounded(game.player.gold10 ?? null)),
@@ -829,8 +827,7 @@ function renderPlayers(panel, matches) {
               el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "" }, scoreText(average)),
               el("span", {}, "综合评分 ", gradeBadge({ grade: gradeOf(average) }), el("br"),
                 mvps ? [mvpBadge(), ` × ${mvps}`, titleCounts.get("SMVP") ? `（含 SMVP ${titleCounts.get("SMVP")}）` : ""] : "暂无 MVP")),
-            topTitles.length ? el("span", { class: "pc-titles" }, topTitles.map(([name, count]) =>
-              el("span", { class: "title-chip", title: TITLE_TIPS[name] }, `【${name}】×${count}`))) : null,
+            topTitles.length ? el("span", { class: "pc-titles" }, topTitles.map(([name, count]) => titleChip(name, count))) : null,
             el("span", { class: "pc-meta" }, `K/D/A ${kda(mine).text}`),
             el("span", { class: "pc-meta" }, `GPM ${rounded(averageOf(mine, "gpm"))} · 线优 ${lanes.rated ? winText(lanes.win, lanes.rated) : "—"}`)),
           radar(dims, { size: 150, compare: leagueDims }),
@@ -937,7 +934,6 @@ async function load() {
     ]);
     state.heroes = constants.heroes || {};
     state.items = constants.items || {};
-    state.talents = constants.talents || {};
     for (const match of league.matches || []) {
       for (const player of match.players || []) {
         if (player.account_id && player.personaname) state.names[player.account_id] = player.personaname;
