@@ -1,9 +1,12 @@
-import { buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams, PICK_STRATEGIES, suggestPickOrder } from "./matchmaker-model.js?v=6";
+import {
+  attachPositionRatings, buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams,
+  POSITION_MIN_GAMES, suggestPickOrder,
+} from "./matchmaker-model.js?v=7";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#draftForm");
 const inputs = document.querySelector("#draftInputs");
-const captainFields = [...form.querySelectorAll("select")];
+const captainFields = [...form.querySelectorAll("#captainA, #captainB")];
 const search = document.querySelector("#draftSearch");
 const pool = document.querySelector("#draftPool");
 const picked = document.querySelector("#draftPicked");
@@ -17,7 +20,7 @@ const resultsSummary = document.querySelector("#draftResultsSummary");
 const plans = document.querySelector("#draftPlans");
 const calibrationNote = document.querySelector("#calibrationNote");
 const tabs = [...document.querySelectorAll(".draft-tabs [role=tab]")];
-const firstPick = document.querySelector("#firstPick");
+const pickOptions = document.querySelector("#pickOptions");
 const pickResults = document.querySelector("#pickResults");
 const pickResultsTitle = document.querySelector("#pickResultsTitle");
 const pickSummary = document.querySelector("#pickSummary");
@@ -25,6 +28,7 @@ const pickOrder = document.querySelector("#pickOrder");
 const pickPlan = document.querySelector("#pickPlan");
 const submitLabels = { auto: "计算分队", pick: "生成选马顺序" };
 const teamNames = { A: "甲队", B: "乙队" };
+const positionNames = { 1: "核心", 2: "中单", 3: "劣势路", 4: "辅助", 5: "硬辅助" };
 
 const memberCount = 8;
 const selected = new Set();
@@ -36,6 +40,7 @@ let sharedState;
 let calibration;
 let roster = [];
 let playersById = new Map();
+let positionStats = null;
 let mode = "auto";
 
 function make(tag, className, text = "") {
@@ -55,11 +60,26 @@ function ratingSource(player) {
 }
 
 function scoreDetails(player) {
-  const medal = describeRankTier(player.rankTier);
+  const medal = describeRankTier(player.rankTier, player.leaderboardRank);
   const source = player.ratingSource === "medal" ? medal + "估分" : ratingSource(player);
   return source + " " + integer.format(player.baseRating) +
     " · 内战 Elo " + integer.format(player.inhouseRating) +
     "（" + player.games + " 场 · 采纳 " + percent.format(player.inhouseWeight) + "）";
+}
+
+function mainPositions(player) {
+  if (!positionStats) return "";
+  if (!player.positions) return " · 位置样本不足";
+  const played = Object.entries(player.positions).filter(([, slot]) => !slot.rare)
+    .sort(([, left], [, right]) => right.games - left.games).map(([position]) => position);
+  return played.length ? ` · 常打 ${played.join("、")} 号位` : " · 各号位都玩的少";
+}
+
+function positionDetails(player, slot) {
+  if (!player.positions) return scoreDetails(player) + " · 没有足够的近期公开比赛，不分号位";
+  const record = `近 ${player.positionGames} 场（${player.positionSince} 起）打了 ${slot.games} 场 ${slot.position} 号位，胜 ${slot.wins} 场`;
+  return slot.rare ? `${record} · 少于 ${POSITION_MIN_GAMES} 场，按综合分 ${integer.format(player.rating)} − 500 计`
+    : `${record} · 综合分 ${integer.format(player.rating)}，位置修正 ${slot.delta >= 0 ? "+" : "−"}${integer.format(Math.abs(slot.delta))}`;
 }
 
 function renderSelection() {
@@ -101,7 +121,7 @@ function renderPool() {
     const info = make("span", "draft-player-info");
     const name = make("span", "draft-player-name", player.name);
     name.title = player.name;
-    const account = player.accountId + " · " + ratingSource(player);
+    const account = player.accountId + " · " + ratingSource(player) + mainPositions(player);
     info.append(name, make("small", "draft-player-id", account));
     const rating = make("strong", "draft-player-rating", integer.format(player.rating));
     rating.title = scoreDetails(player);
@@ -121,10 +141,28 @@ function invalidatePlans() {
   pickPlan.replaceChildren();
 }
 
-function renderTeam(label, players, average) {
+function renderTeam(label, players, average, lineup) {
   const team = make("div", "draft-team");
-  const heading = make("h4", "", `${label} · 均分 ${decimal.format(average)}`);
+  const heading = make("h4", "", `${label} · ${lineup ? "阵容分" : "均分"} ${decimal.format(average)}`);
   const list = make("ul", "draft-team-players");
+  if (lineup) {
+    for (const slot of lineup) {
+      const { player } = slot;
+      const row = make("li", "");
+      row.dataset.accountId = String(player.accountId);
+      const name = make("span", "draft-team-player");
+      name.append(make("small", "draft-position", `${slot.position} ${positionNames[slot.position]}`), player.name);
+      if (player === players[0]) name.append(make("small", "draft-role", "队长"));
+      if (slot.rare) name.append(make("small", "draft-role draft-rare", "玩的少"));
+      else if (!player.positions) name.append(make("small", "draft-role", "不分号位"));
+      const score = make("strong", "", integer.format(slot.rating));
+      score.title = positionDetails(player, slot);
+      row.append(name, score);
+      list.append(row);
+    }
+    team.append(heading, list);
+    return team;
+  }
   players.forEach((player, index) => {
     const row = make("li", "");
     row.dataset.accountId = String(player.accountId);
@@ -159,7 +197,7 @@ function renderPlan(plan, index) {
   bar.setAttribute("aria-hidden", "true");
 
   const teams = make("div", "draft-teams");
-  teams.append(renderTeam("甲队", plan.teamA, plan.averageA), renderTeam("乙队", plan.teamB, plan.averageB));
+  teams.append(renderTeam("甲队", plan.teamA, plan.averageA, plan.lineupA), renderTeam("乙队", plan.teamB, plan.averageB, plan.lineupB));
   card.append(heading, forecast, bar, teams);
   return card;
 }
@@ -175,8 +213,9 @@ function renderPickOrder(result) {
     item.append(make("strong", "", `${teamNames[side]}选 ${players.length} 匹`));
     for (const player of players) {
       const pick = make("span", "draft-pick-player", player.name);
-      const score = make("small", "", integer.format(player.rating));
-      score.title = scoreDetails(player);
+      const slot = (side === "A" ? result.lineupA : result.lineupB)?.find((entry) => entry.player === player);
+      const score = make("small", "", slot ? `${slot.position} 号位 ${integer.format(slot.rating)}` : integer.format(player.rating));
+      score.title = slot ? positionDetails(player, slot) : scoreDetails(player);
       pick.append(score);
       item.append(pick);
     }
@@ -192,7 +231,7 @@ function setMode(next) {
     tab.setAttribute("aria-selected", String(active));
     tab.tabIndex = active ? 0 : -1;
   }
-  firstPick.hidden = mode !== "pick";
+  pickOptions.hidden = mode !== "pick";
   submit.textContent = submitLabels[mode];
   invalidatePlans();
 }
@@ -207,7 +246,7 @@ for (const tab of tabs) {
   });
 }
 
-firstPick.addEventListener("change", invalidatePlans);
+pickOptions.addEventListener("change", invalidatePlans);
 
 for (const [index, field] of captainFields.entries()) {
   field.addEventListener("change", () => {
@@ -255,16 +294,18 @@ form.addEventListener("submit", async (event) => {
   const others = [...selected].map((id) => playersById.get(id));
   if (mode === "pick") {
     const side = form.elements.firstPick.value;
-    const strategy = PICK_STRATEGIES.highestRating;
-    const result = suggestPickOrder(captainA, captainB, others, { firstPick: side, strategyA: strategy, scale: calibration.applied.scale });
-    pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序，双方都${strategy.label}选。`;
+    const result = suggestPickOrder(captainA, captainB, others, {
+      firstPick: side, scale: calibration.applied.scale, positions: Boolean(positionStats),
+    });
+    pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序。双方都预判对方的选法，每一手都取推演到选完后对本方最好的人。` +
+      (positionStats ? "" : "位置数据读取失败，按均分计算。");
     renderPickOrder(result);
     pickResults.hidden = false;
     pickResultsTitle.focus({ preventScroll: true });
     pickResults.scrollIntoView({ block: "start" });
     return;
   }
-  const result = findBalancedTeams(captainA, captainB, others, { scale: calibration.applied.scale });
+  const result = findBalancedTeams(captainA, captainB, others, { scale: calibration.applied.scale, positions: Boolean(positionStats) });
   resultsSummary.textContent = result.withinRange === 0
     ? `${result.examined} 套分法均超出 40%–60% 区间，显示最接近五五开的 ${result.plans.length} 套。`
     : `${result.examined} 套分法中有 ${result.withinRange} 套在 40%–60% 区间，显示 ${result.plans.length} 套。`;
@@ -305,8 +346,8 @@ function renderRoster(sharedStatus) {
   calibration = calibrateModel(snapshot, sharedState?.ratings);
   renderCalibration();
   const named = { ...snapshot, player_names: { ...snapshot.player_names, ...sharedState?.aliases } };
-  roster = buildLeagueRoster(named, sharedState?.ratings, calibration.applied)
-    .filter((player) => Number.isFinite(player.rating))
+  roster = attachPositionRatings(buildLeagueRoster(named, sharedState?.ratings, calibration.applied)
+    .filter((player) => Number.isFinite(player.rating)), positionStats?.players)
     .sort((left, right) => left.name.localeCompare(right.name, "zh-CN") || left.accountId - right.accountId);
   playersById = new Map(roster.map((player) => [player.accountId, player]));
   for (const id of selected) {
@@ -327,9 +368,20 @@ function renderRoster(sharedStatus) {
   const manualCount = roster.filter((player) => player.ratingSource === "manual").length;
   inputs.disabled = roster.length < 10;
   const status = inputs.disabled ? "可评分玩家不足 10 人，请补充天梯分。" :
-    roster.length + " 名可选玩家 · " + manualCount + " 人已填写天梯分";
+    roster.length + " 名可选玩家 · " + manualCount + " 人已填写天梯分 · " +
+    (positionStats ? `位置数据 ${positionStats.generated_at_utc.slice(0, 10)} 更新` : "位置数据读取失败，按均分计算");
   dataStatus.textContent = sharedStatus ? status + " · " + sharedStatus : status;
   renderPool();
+}
+
+async function loadPositionStats() {
+  try {
+    const response = await fetch("./data/position-stats.json");
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    positionStats = await response.json();
+  } catch (error) {
+    console.error("Could not read position stats", error);
+  }
 }
 
 async function loadRoster() {
@@ -337,6 +389,7 @@ async function loadRoster() {
     const [response, sharedStatus] = await Promise.all([
       fetch("./data/league.json"),
       refreshSharedScores(),
+      loadPositionStats(),
     ]);
     if (!response.ok) throw new Error("Could not read league snapshot (HTTP " + response.status + ")");
     snapshot = await response.json();

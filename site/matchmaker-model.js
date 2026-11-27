@@ -27,6 +27,9 @@ const SIGNIFICANT_GAIN = 3.84;
 // Coarse estimates use band midpoints. Tier codes without stars use the medal midpoint.
 // Immortal uses a chosen 6000 proxy. Valve documented 5620 as the old Immortal
 // Draft threshold and has since adjusted Immortal ratings.
+// An Immortal with a regional leaderboard place (top 5000) gets a rough log-linear estimate between
+// 9500 for first place (the top of the 2026-07 rescale, which kept leaderboard order) and 6200 for
+// place 5000. Valve publishes no place-to-rating table; regions differ, so this is only an ordering.
 // https://store.steampowered.com/news/posts/?appids=570&enddate=1685665325
 // https://www.dota2.com/summerscrub2026
 const MEDALS = [
@@ -40,6 +43,9 @@ const MEDALS = [
   { name: "冠绝一世", estimate: 6000 },
 ];
 
+const LEADERBOARD_TOP = { place: 1, rating: 9500 };
+const LEADERBOARD_LAST = { place: 5000, rating: 6200 };
+
 function getMedal(rankTier) {
   if (!Number.isInteger(rankTier)) return null;
   if (rankTier === 80 || (rankTier >= 10 && rankTier <= 75 && rankTier % 10 <= 5)) {
@@ -48,16 +54,25 @@ function getMedal(rankTier) {
   return null;
 }
 
-export function describeRankTier(rankTier) {
+const leaderboardPlace = (rankTier, place) =>
+  rankTier === 80 && Number.isSafeInteger(place) && place > 0 ? Math.min(place, LEADERBOARD_LAST.place) : null;
+
+export function describeRankTier(rankTier, place) {
   const medal = getMedal(rankTier);
   if (!medal) return "";
   const stars = rankTier % 10;
+  if (leaderboardPlace(rankTier, place)) return `${medal.name} 第 ${place} 名`;
   return stars ? `${medal.name} ${stars} 星` : medal.name;
 }
 
-export function estimateRankMmr(rankTier) {
+export function estimateRankMmr(rankTier, place) {
   const medal = getMedal(rankTier);
   if (!medal) return null;
+  const onBoard = leaderboardPlace(rankTier, place);
+  if (onBoard) {
+    const span = Math.log(LEADERBOARD_LAST.place / LEADERBOARD_TOP.place);
+    return Math.round(LEADERBOARD_TOP.rating - (LEADERBOARD_TOP.rating - LEADERBOARD_LAST.rating) * Math.log(onBoard) / span);
+  }
   const stars = rankTier % 10;
   return medal.estimate + ((stars || 3) - 3) * (medal.starWidth ?? 154);
 }
@@ -126,13 +141,15 @@ function prepareLeague(snapshot, manualMmr) {
   const manualRatings = [];
   for (const entry of league.values()) {
     const rankTier = snapshot.opendota_rank_tiers?.[entry.accountId];
-    const medalRating = estimateRankMmr(rankTier);
+    const place = snapshot.opendota_leaderboard_ranks?.[entry.accountId];
+    const medalRating = estimateRankMmr(rankTier, place);
     const manualRating = manualMmr?.[entry.accountId];
     const hasManual = Number.isSafeInteger(manualRating) && manualRating >= 0 && manualRating <= 99999;
     if (medalRating !== null) medalRatings.push(medalRating);
     if (hasManual) manualRatings.push(manualRating);
 
     entry.rankTier = medalRating === null ? null : rankTier;
+    entry.leaderboardRank = leaderboardPlace(entry.rankTier, place);
     entry.baseRating = hasManual ? manualRating : medalRating;
     entry.ratingSource = hasManual ? "manual" : medalRating === null ? "unavailable" : "medal";
   }
@@ -179,7 +196,7 @@ export function buildLeagueRoster(snapshot, manualMmr = {}, model = DEFAULT_MODE
   const prepared = prepareLeague(snapshot, manualMmr);
   const inhouse = replayInhouse(prepared, model);
   return [...prepared.league.values()].map((entry) => {
-    const { accountId, name, games, baseRating, rankTier, ratingSource } = entry;
+    const { accountId, name, games, baseRating, rankTier, leaderboardRank, ratingSource } = entry;
     const inhouseRating = inhouse.get(entry);
     const weight = baseRating === null ? 0 : inhouseWeight(games, model);
     return {
@@ -190,6 +207,7 @@ export function buildLeagueRoster(snapshot, manualMmr = {}, model = DEFAULT_MODE
       inhouseRating,
       inhouseWeight: weight,
       rankTier,
+      leaderboardRank,
       ratingSource,
       rating: baseRating === null ? null : baseRating + weight * (inhouseRating - baseRating),
     };
@@ -288,52 +306,146 @@ function checkSelection(captainA, captainB, others) {
   }
 }
 
-function describeTeams(teamA, teamB, scale) {
-  const averageA = average(teamA.map((player) => player.rating));
-  const averageB = average(teamB.map((player) => player.rating));
+// Position strength: each position's public win rate, shrunk toward the player's overall rate, as an Elo
+// offset from the player's rating. Positions with too few recent games count as rarely played.
+export const POSITIONS = Object.freeze(["1", "2", "3", "4", "5"]);
+export const POSITION_PRIORITY = Object.freeze(["2", "1", "3", "5", "4"]);
+// A lineup's score is the weighted mean of its position ratings; higher priority weighs more.
+export const POSITION_WEIGHTS = Object.freeze({ 2: 1.3, 1: 1.2, 3: 1, 5: 0.85, 4: 0.75 });
+export const POSITION_MIN_GAMES = 10;
+// With fewer recent games in all, a player has no position data and rates the same everywhere.
+const POSITION_MIN_HISTORY = 30;
+// Pseudo-games at the player's overall win rate. In 2026-11 the league players' position win rates varied
+// by about 0.06 beyond binomial noise (≈ 40-50 rating points), so about 50 games of noise equal that signal.
+const POSITION_SHRINK = 50;
+const POSITION_ELO_SCALE = 400;
+export const RARE_POSITION_PENALTY = 500;
+const WEIGHT_TOTAL = POSITIONS.reduce((sum, position) => sum + POSITION_WEIGHTS[position], 0);
+
+const eloOffset = (chance) => POSITION_ELO_SCALE * Math.log10(chance / (1 - chance));
+
+export function attachPositionRatings(players, stats) {
+  return players.map((player) => {
+    const record = stats?.[player.accountId];
+    if (!Number.isFinite(player.rating) || !record || !(record.games >= POSITION_MIN_HISTORY)) return { ...player, positions: null };
+    const wins = POSITIONS.reduce((sum, position) => sum + (record.positions?.[position]?.[1] ?? 0), 0);
+    const overall = (wins + POSITION_SHRINK / 2) / (record.games + POSITION_SHRINK);
+    const positions = Object.fromEntries(POSITIONS.map((position) => {
+      const [games = 0, won = 0] = record.positions?.[position] ?? [];
+      if (games < POSITION_MIN_GAMES) {
+        return [position, { games, wins: won, rare: true, delta: null, rating: player.rating - RARE_POSITION_PENALTY }];
+      }
+      const delta = eloOffset((won + overall * POSITION_SHRINK) / (games + POSITION_SHRINK)) - eloOffset(overall);
+      return [position, { games, wins: won, rare: false, delta, rating: player.rating + delta }];
+    }));
+    return { ...player, positions, positionGames: record.games, positionSince: record.since ?? null };
+  });
+}
+
+const positionRating = (player, position) => player.positions?.[position]?.rating ?? player.rating;
+
+const PERMUTATIONS = (function permute(rest) {
+  if (rest.length <= 1) return [rest];
+  return rest.flatMap((item, index) => permute([...rest.slice(0, index), ...rest.slice(index + 1)]).map((tail) => [item, ...tail]));
+})(POSITIONS);
+
+// The position assignment with the highest weighted rating; ties keep the first permutation.
+function bestLineup(team) {
+  let best = null;
+  for (const order of PERMUTATIONS) {
+    const score = order.reduce((sum, position, index) => sum + POSITION_WEIGHTS[position] * positionRating(team[index], position), 0);
+    if (!best || score > best.score + 1e-9) best = { score, order };
+  }
+  const lineup = best.order.map((position, index) => ({ position, player: team[index], ...team[index].positions?.[position] }))
+    .map((slot) => ({ ...slot, rating: positionRating(slot.player, slot.position) }))
+    .sort((left, right) => Number(left.position) - Number(right.position));
+  return { score: best.score / WEIGHT_TOTAL, lineup };
+}
+
+function describeTeams(teamA, teamB, scale, positions) {
+  const lineupA = positions ? bestLineup(teamA) : null;
+  const lineupB = positions ? bestLineup(teamB) : null;
+  const averageA = lineupA ? lineupA.score : average(teamA.map((player) => player.rating));
+  const averageB = lineupB ? lineupB.score : average(teamB.map((player) => player.rating));
   const difference = averageA - averageB;
-  return { teamA, teamB, averageA, averageB, ratingGap: Math.abs(difference), winChanceA: expectedWinChance(difference, scale) };
+  return {
+    teamA, teamB, averageA, averageB, lineupA: lineupA?.lineup ?? null, lineupB: lineupB?.lineup ?? null,
+    ratingGap: Math.abs(difference), winChanceA: expectedWinChance(difference, scale),
+  };
 }
 
 // Captains pick the eight others in 1-2-2-2-1 turns, starting with the first picker.
 export const PICK_TURNS = Object.freeze([1, 2, 2, 2, 1]);
 
-// A pick strategy returns one player from `available` for the side to move.
-// Context: { side: "A" | "B", own, opponent, available, turn }.
-export const PICK_STRATEGIES = Object.freeze({
-  highestRating: Object.freeze({
-    label: "按综合分从高到低",
-    choose: ({ available }) => available.reduce((best, player) =>
-      (player.rating > best.rating || (player.rating === best.rating && player.accountId < best.accountId) ? player : best)),
-  }),
-});
+const byRating = (left, right) => right.rating - left.rating || left.accountId - right.accountId;
+
+// Both captains know how the other drafts: by default each searches every remaining pick and takes the
+// best final win chance for its side, so the suggestion is optimal play by both. A custom strategy
+// ({ choose({ side, own, opponent, available, turn }) }) can stand in for one side.
+export const OPTIMAL_STRATEGY = Object.freeze({ lookahead: true });
 
 export function suggestPickOrder(captainA, captainB, others, {
-  firstPick = "A", strategyA = PICK_STRATEGIES.highestRating, strategyB = strategyA, scale = DEFAULT_MODEL.scale,
+  firstPick = "A", strategyA = OPTIMAL_STRATEGY, strategyB = OPTIMAL_STRATEGY,
+  scale = DEFAULT_MODEL.scale, positions = false,
 } = {}) {
   checkSelection(captainA, captainB, others);
   if (firstPick !== "A" && firstPick !== "B") throw new TypeError("firstPick must be A or B.");
-  const teams = { A: [captainA], B: [captainB] };
+  const pool = [...others].sort(byRating);
   const strategies = { A: strategyA, B: strategyB };
-  const available = [...others];
-  const picks = [];
-  PICK_TURNS.forEach((count, turn) => {
-    const side = (turn % 2 === 0) === (firstPick === "A") ? "A" : "B";
-    for (let index = 0; index < count; index += 1) {
-      const player = strategies[side].choose({
-        side, own: [...teams[side]], opponent: [...teams[side === "A" ? "B" : "A"]], available: [...available], turn,
-      });
-      const position = available.indexOf(player);
-      if (position < 0) throw new Error("Pick strategy chose a player who is not available.");
-      available.splice(position, 1);
-      teams[side].push(player);
-      picks.push({ turn, side, player });
+  const order = PICK_TURNS.flatMap((count, turn) =>
+    Array.from({ length: count }, () => ({ turn, side: (turn % 2 === 0) === (firstPick === "A") ? "A" : "B" })));
+  const members = (mask) => pool.filter((_, index) => mask & (1 << index));
+  const teams = (masks) => ({ A: [captainA, ...members(masks.A)], B: [captainB, ...members(masks.B)] });
+
+  const memo = new Map();
+  // The next pick's index into pool under each side's strategy, and the resulting final win chance for A.
+  function play(masks) {
+    const key = masks.A * 256 + masks.B;
+    if (memo.has(key)) return memo.get(key);
+    const step = countBits(masks.A | masks.B);
+    let result;
+    if (step === order.length) {
+      const { A, B } = teams(masks);
+      result = { pick: -1, value: describeTeams(A, B, scale, positions).winChanceA };
+    } else {
+      const { side } = order[step];
+      const taken = masks.A | masks.B;
+      const options = pool.map((_, index) => index).filter((index) => !(taken & (1 << index)));
+      const after = (index) => play({ ...masks, [side]: masks[side] | (1 << index) }).value;
+      if (strategies[side].lookahead) {
+        result = null;
+        for (const index of options) {
+          const value = after(index);
+          const better = side === "A" ? value > (result?.value ?? -1) + 1e-12 : value < (result?.value ?? 2) - 1e-12;
+          if (better) result = { pick: index, value };
+        }
+      } else {
+        const current = teams(masks);
+        const player = strategies[side].choose({
+          side, own: current[side], opponent: current[side === "A" ? "B" : "A"],
+          available: options.map((index) => pool[index]), turn: order[step].turn,
+        });
+        const index = pool.indexOf(player);
+        if (!options.includes(index)) throw new Error("Pick strategy chose a player who is not available.");
+        result = { pick: index, value: after(index) };
+      }
     }
+    memo.set(key, result);
+    return result;
+  }
+
+  const masks = { A: 0, B: 0 };
+  const picks = order.map(({ turn, side }) => {
+    const { pick } = play(masks);
+    masks[side] |= 1 << pick;
+    return { turn, side, player: pool[pick] };
   });
-  return { picks, ...describeTeams(teams.A, teams.B, scale) };
+  const sides = { A: [captainA], B: [captainB] };
+  for (const { side, player } of picks) sides[side].push(player);
+  return { picks, ...describeTeams(sides.A, sides.B, scale, positions) };
 }
 
-export function findBalancedTeams(captainA, captainB, others, { scale = DEFAULT_MODEL.scale } = {}) {
+export function findBalancedTeams(captainA, captainB, others, { scale = DEFAULT_MODEL.scale, positions = false } = {}) {
   checkSelection(captainA, captainB, others);
 
   const ordered = [...others].sort((left, right) => left.accountId - right.accountId);
@@ -343,7 +455,7 @@ export function findBalancedTeams(captainA, captainB, others, { scale = DEFAULT_
     const teamA = [captainA];
     const teamB = [captainB];
     ordered.forEach((player, index) => ((mask & (1 << index)) ? teamA : teamB).push(player));
-    plans.push({ mask, ...describeTeams(teamA, teamB, scale) });
+    plans.push({ mask, ...describeTeams(teamA, teamB, scale, positions) });
   }
 
   plans.sort(compareBalance);

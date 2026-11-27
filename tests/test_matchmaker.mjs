@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildLeagueRoster, calibrateModel, DEFAULT_MODEL, describeRankTier, estimateRankMmr, findBalancedTeams, PICK_TURNS, suggestPickOrder } from "../site/matchmaker-model.js";
+import { buildLeagueRoster, calibrateModel, DEFAULT_MODEL, describeRankTier, estimateRankMmr, findBalancedTeams, OPTIMAL_STRATEGY, PICK_TURNS, suggestPickOrder,
+  attachPositionRatings, POSITION_WEIGHTS, RARE_POSITION_PENALTY } from "../site/matchmaker-model.js";
 
 function match(matchId, startTime, radiantWin, firstAccountId = 1) {
   return {
@@ -77,6 +78,7 @@ test("seeds Elo with manual, medal, and medal-median baselines and applies each 
     inhouseRating: 2400 + delta,
     inhouseWeight: 1 / 37,
     rankTier: 75,
+    leaderboardRank: null,
     ratingSource: "manual",
     rating: 2400 + (1 / 37) * ((2400 + delta) - 2400),
   });
@@ -92,6 +94,7 @@ test("seeds Elo with manual, medal, and medal-median baselines and applies each 
     inhouseRating: 5520 + delta,
     inhouseWeight: 1 / 37,
     rankTier: null,
+    leaderboardRank: null,
     ratingSource: "median",
     rating: 5520 + (1 / 37) * ((5520 + delta) - 5520),
   });
@@ -179,6 +182,7 @@ test("discovers visible players in anonymous matches and ignores ratings from th
     inhouseRating: null,
     inhouseWeight: 0,
     rankTier: null,
+    leaderboardRank: null,
     ratingSource: "unavailable",
     rating: null,
   });
@@ -294,7 +298,7 @@ test("adopts a shrunk scale once the fitted interval is closed and the history i
   assert.ok(wide.withinRange >= narrow.withinRange);
 });
 
-test("suggests 1-2-2-2-1 picks where each side takes the highest remaining rating", () => {
+test("without positions, optimal 1-2-2-2-1 picks take the highest remaining rating", () => {
   const [captainA, captainB, ...others] = playersForRatings([3000, 3000, 2000, 5000, 4000, 4500, 3500, 2500, 4000, 1000]);
   assert.deepEqual(PICK_TURNS, [1, 2, 2, 2, 1]);
 
@@ -321,4 +325,99 @@ test("lets each side use its own pick strategy and rejects invalid picks", () =>
   assert.throws(() => suggestPickOrder(captainA, captainB, others, { firstPick: "C" }), TypeError);
   assert.throws(() => suggestPickOrder(captainA, captainB, others.slice(1)), TypeError);
   assert.throws(() => suggestPickOrder(captainA, captainB, others, { strategyA: { choose: () => captainB } }), Error);
+});
+
+function record(perPosition) {
+  const positions = Object.fromEntries(["1", "2", "3", "4", "5"].map((position, index) => [position, perPosition[index] ?? [0, 0]]));
+  return { games: Object.values(positions).reduce((sum, [games]) => sum + games, 0), since: "2026-06-01", positions };
+}
+
+test("rates each position from its shrunk win rate and marks rarely played positions", () => {
+  const [player, newcomer, unknown] = attachPositionRatings(
+    [{ accountId: 1, rating: 4000 }, { accountId: 2, rating: 3000 }, { accountId: 3, rating: 3500 }],
+    { 1: record([[60, 30], [30, 21], [9, 9], [1, 0]]), 2: record([[29, 29]]) },
+  );
+  const overall = (60 + 25) / 150;
+  const elo = (chance) => 400 * Math.log10(chance / (1 - chance));
+  assert.ok(Math.abs(player.positions[2].delta - (elo((21 + overall * 50) / 80) - elo(overall))) < 1e-9);
+  assert.ok(player.positions[2].rating > 4000 && player.positions[1].rating < 4000);
+  assert.deepEqual(player.positions[3], { games: 9, wins: 9, rare: true, delta: null, rating: 4000 - RARE_POSITION_PENALTY });
+  assert.equal(player.positions[5].rare, true);
+  assert.equal(player.positionSince, "2026-06-01");
+  assert.equal(newcomer.positions, null);
+  assert.equal(unknown.positions, null);
+});
+
+function specialist(accountId, rating, best, bonus = 0) {
+  const positions = Object.fromEntries(["1", "2", "3", "4", "5"].map((position) => [position,
+    position === best ? { games: 50, wins: 25, rare: false, delta: bonus, rating: rating + bonus }
+      : { games: 0, wins: 0, rare: true, delta: null, rating: rating - RARE_POSITION_PENALTY }]));
+  return { accountId, rating, positions };
+}
+
+test("scores each team by its best weighted position lineup", () => {
+  const captainA = specialist(1, 4000, "1");
+  const captainB = specialist(2, 4000, "1");
+  const others = [specialist(3, 4000, "2"), specialist(4, 4000, "2"), specialist(5, 4000, "3"), specialist(6, 4000, "3"),
+    specialist(7, 4000, "4"), specialist(8, 4000, "4"), specialist(9, 4000, "5"), specialist(10, 4000, "5")];
+  const { plans } = findBalancedTeams(captainA, captainB, others, { positions: true });
+  for (const plan of plans) {
+    assert.deepEqual(plan.lineupA.map((slot) => slot.player.positions[slot.position].rare), [false, false, false, false, false]);
+    assert.ok(Math.abs(plan.averageA - 4000) < 1e-9 && Math.abs(plan.winChanceA - 0.5) < 1e-12);
+  }
+  assert.equal(plans.length, 5);
+
+  // Team A drafts both mids: the stronger one plays mid and the other a rare position at -500.
+  const twoMids = [specialist(3, 4400, "2"), specialist(4, 4000, "2"), ...others.slice(2)];
+  const lowestId = { choose: ({ available }) => available.reduce((low, player) => (player.accountId < low.accountId ? player : low)) };
+  const highestId = { choose: ({ available }) => available.reduce((high, player) => (player.accountId > high.accountId ? player : high)) };
+  const { teamA, lineupA, averageA } = suggestPickOrder(captainA, captainB, twoMids, { strategyA: lowestId, strategyB: highestId, positions: true });
+  assert.ok(teamA.includes(twoMids[0]) && teamA.includes(twoMids[1]));
+  assert.equal(lineupA.find((slot) => slot.position === "2").player, twoMids[0]);
+  const rareSlot = lineupA.find((slot) => slot.player === twoMids[1]);
+  assert.equal(rareSlot.rare, true);
+  const weighted = lineupA.reduce((sum, slot) => sum + POSITION_WEIGHTS[slot.position] * slot.rating, 0) /
+    Object.values(POSITION_WEIGHTS).reduce((sum, weight) => sum + weight, 0);
+  assert.ok(Math.abs(averageA - weighted) < 1e-9);
+});
+
+test("optimal play knows the other side's strategy and never does worse than greedy", () => {
+  const ratings = [4300, 4100, 4900, 4700, 4500, 4200, 4000, 3800, 3600, 3300];
+  const mains = ["2", "5", "1", "2", "3", "4", "2", "5", "1", "3"];
+  const bonus = [80, 0, 40, -30, 0, 20, 60, 0, -50, 10];
+  const [captainA, captainB, ...others] = ratings.map((rating, index) => specialist(index + 1, rating, mains[index], bonus[index]));
+  const lookahead = OPTIMAL_STRATEGY;
+  const highestRating = { choose: ({ available }) => available.reduce((best, player) => (player.rating > best.rating ? player : best)) };
+  for (const firstPick of ["A", "B"]) {
+    const chance = (strategyA, strategyB) =>
+      suggestPickOrder(captainA, captainB, others, { firstPick, strategyA, strategyB, positions: true }).winChanceA;
+    const optimal = chance(lookahead, lookahead);
+    assert.ok(chance(lookahead, highestRating) >= chance(highestRating, highestRating) - 1e-12);
+    assert.ok(chance(highestRating, lookahead) <= chance(highestRating, highestRating) + 1e-12);
+    assert.ok(optimal <= chance(lookahead, highestRating) + 1e-12);
+    assert.ok(optimal >= chance(highestRating, lookahead) - 1e-12);
+  }
+  const both = suggestPickOrder(captainA, captainB, others, { positions: true });
+  assert.equal(both.picks.length, 8);
+  assert.equal(new Set(both.picks.map(({ player }) => player.accountId)).size, 8);
+  assert.equal(both.lineupA.length, 5);
+});
+
+test("estimates an Immortal's rating from the regional leaderboard place", () => {
+  assert.equal(estimateRankMmr(80, 1), 9500);
+  assert.equal(estimateRankMmr(80, 5000), 6200);
+  assert.equal(estimateRankMmr(80, 9000), 6200);
+  assert.equal(estimateRankMmr(80, 302), 7287);
+  assert.ok(estimateRankMmr(80, 100) > estimateRankMmr(80, 1000));
+  for (const place of [undefined, null, 0, -3, 1.5, "302"]) assert.equal(estimateRankMmr(80, place), 6000);
+  assert.equal(estimateRankMmr(75, 4808), 5520);
+  assert.equal(describeRankTier(80, 302), "冠绝一世 第 302 名");
+  assert.equal(describeRankTier(75, 4808), "超凡入圣 5 星");
+
+  const snapshot = { matches: [match(1, 100, true)], opendota_rank_tiers: { 1: 80, 2: 75 }, opendota_leaderboard_ranks: { 1: 302, 2: 4808 } };
+  const players = playersById(snapshot, {});
+  assert.equal(players.get(1).baseRating, 7287);
+  assert.equal(players.get(1).leaderboardRank, 302);
+  assert.equal(players.get(2).baseRating, 5520);
+  assert.equal(players.get(2).leaderboardRank, null);
 });

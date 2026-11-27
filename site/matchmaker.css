@@ -373,6 +373,20 @@
   font-weight: 700;
 }
 
+.draft-position {
+  display: inline-block;
+  min-width: 4.6em;
+  margin-inline-end: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.draft-rare {
+  color: #a4112b;
+  font-weight: 700;
+}
+
 .draft-first-pick label {
   display: inline-flex;
   align-items: center;

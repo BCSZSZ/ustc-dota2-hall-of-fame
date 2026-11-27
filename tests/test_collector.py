@@ -7,6 +7,7 @@ import pytest
 from collector import (
     LeagueCollectionError,
     OpenDotaLeagueClient,
+    _refresh_opendota_rank_tiers,
     collect_league_data,
     normalise_match,
     write_snapshot,
@@ -310,7 +311,8 @@ def test_incremental_run_fetches_only_new_matches_and_reuses_ranks(tmp_path: Pat
         {
             "league_id": 19224,
             "matches": [normalise_match(make_match(1), 19224)],
-            "opendota_rank_tiers": {"1000": 55, "1001": 999},
+            "opendota_rank_tiers": {"1000": 55, "1001": 999, "1002": 80},
+            "opendota_leaderboard_ranks": {"1000": 12, "1002": 302},
         },
     )
     client = FakeClient(
@@ -331,4 +333,23 @@ def test_incremental_run_fetches_only_new_matches_and_reuses_ranks(tmp_path: Pat
 
     assert client.requested == ["/leagues/19224", "/leagues/19224/matchIds", "/matches/2"]
     assert [match["match_id"] for match in snapshot["matches"]] == [1, 2]
-    assert snapshot["opendota_rank_tiers"] == {"1000": 55}
+    assert snapshot["opendota_rank_tiers"] == {"1000": 55, "1002": 80}
+    assert snapshot["opendota_leaderboard_ranks"] == {"1002": 302}
+
+
+def test_keeps_leaderboard_places_only_for_immortal_accounts() -> None:
+    failure = LeagueCollectionError("OpenDota server error 503")
+    client = FakeClient({
+        "/players/1": {"rank_tier": 80, "leaderboard_rank": 302},
+        "/players/2": {"rank_tier": 75, "leaderboard_rank": 4808},
+        "/players/3": {"rank_tier": 80, "leaderboard_rank": None},
+        "/players/4": failure,
+        "/players/5": {"rank_tier": 80, "leaderboard_rank": "9"},
+    })
+
+    tiers, places = _refresh_opendota_rank_tiers(
+        [1, 2, 3, 4, 5], {"4": 80}, client, {"3": 50, "4": 4119}  # type: ignore[arg-type]
+    )
+
+    assert tiers == {"1": 80, "2": 75, "3": 80, "4": 80, "5": 80}
+    assert places == {"1": 302, "4": 4119}

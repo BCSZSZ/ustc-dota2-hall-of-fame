@@ -6,6 +6,7 @@ import os
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from dotenv import load_dotenv
 
 from match_details import _read, ensure_images, refresh_match_details
 from replays import REPLAY_DIR, archive_all, gh_uploader, plan_downloads, read_manifest, record_archives
+from position_stats import refresh_position_stats
 from stratz import refresh_stratz, stratz_client
 
 API_BASE_URL = "https://api.opendota.com/api"
@@ -208,15 +210,15 @@ def _has_complete_roster(match: dict[str, Any]) -> bool:
 
 def _load_existing(
     path: Path, league_id: int
-) -> tuple[dict[int, dict[str, Any]], dict[str, str], dict[str, Any]]:
+) -> tuple[dict[int, dict[str, Any]], dict[str, str], dict[str, Any], dict[str, Any]]:
     if not path.exists():
-        return {}, {}, {}
+        return {}, {}, {}, {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}, {}, {}
+        return {}, {}, {}, {}
     if int(payload.get("league_id") or 0) != league_id:
-        return {}, {}, {}
+        return {}, {}, {}, {}
     result: dict[int, dict[str, Any]] = {}
     for match in [*payload.get("matches", []), *payload.get("excluded_matches", [])]:
         if (
@@ -229,10 +231,12 @@ def _load_existing(
             }
     names = payload.get("player_names")
     rank_tiers = payload.get("opendota_rank_tiers")
+    leaderboard_ranks = payload.get("opendota_leaderboard_ranks")
     return (
         result,
         names if isinstance(names, dict) else {},
         rank_tiers if isinstance(rank_tiers, dict) else {},
+        leaderboard_ranks if isinstance(leaderboard_ranks, dict) else {},
     )
 
 
@@ -303,6 +307,10 @@ def _valid_rank_tier(value: Any) -> int | None:
     return value if value == 80 or (1 <= medal <= 7 and stars <= 5) else None
 
 
+def _valid_leaderboard_rank(value: Any) -> int | None:
+    return value if type(value) is int and value > 0 else None
+
+
 def _latest_rank_tier(history: Any) -> int | None:
     if not isinstance(history, list):
         return None
@@ -332,9 +340,12 @@ def _latest_rank_tier(history: Any) -> int | None:
 
 
 def _refresh_opendota_rank_tiers(
-    account_ids: list[int], previous_rank_tiers: dict[str, Any], client: OpenDotaLeagueClient
-) -> dict[str, int]:
+    account_ids: list[int], previous_rank_tiers: dict[str, Any], client: OpenDotaLeagueClient,
+    previous_leaderboard_ranks: dict[str, Any] | None = None,
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Medal per account, plus the regional leaderboard place of Immortal accounts."""
     rank_tiers: dict[str, int] = {}
+    leaderboard_ranks: dict[str, int] = {}
     for account_id in account_ids:
         key = str(account_id)
         try:
@@ -342,10 +353,14 @@ def _refresh_opendota_rank_tiers(
         except LeagueCollectionError:
             profile = None
         rank_tier = _valid_rank_tier(profile.get("rank_tier")) if isinstance(profile, dict) else None
+        leaderboard_rank = _valid_leaderboard_rank(profile.get("leaderboard_rank")) if isinstance(profile, dict) else None
         if rank_tier is None:
             rank_tier = _valid_rank_tier(previous_rank_tiers.get(key))
+            leaderboard_rank = _valid_leaderboard_rank((previous_leaderboard_ranks or {}).get(key))
         if rank_tier is not None:
             rank_tiers[key] = rank_tier
+        if rank_tier == 80 and leaderboard_rank is not None:
+            leaderboard_ranks[key] = leaderboard_rank
 
     # Give profile requests first use of the shared request budget.
     for account_id in account_ids:
@@ -359,7 +374,7 @@ def _refresh_opendota_rank_tiers(
         rank_tier = _latest_rank_tier(history)
         if rank_tier is not None:
             rank_tiers[key] = rank_tier
-    return rank_tiers
+    return rank_tiers, leaderboard_ranks
 
 
 def collect_league_data(
@@ -380,7 +395,7 @@ def collect_league_data(
         raise LeagueCollectionError("OpenDota returned an invalid match-ID list")
 
     match_ids = sorted({int(match_id) for match_id in match_ids_raw if int(match_id) > 0})
-    existing, player_names, previous_rank_tiers = _load_existing(output_path, league_id)
+    existing, player_names, previous_rank_tiers, previous_leaderboard_ranks = _load_existing(output_path, league_id)
     refresh_ids = set(match_ids[-refresh_recent:]) if refresh_recent > 0 else set()
     unavailable: list[dict[str, Any]] = []
     incomplete_rosters: list[int] = []
@@ -422,9 +437,14 @@ def collect_league_data(
             for account_id in account_ids
             if (rank_tier := _valid_rank_tier(previous_rank_tiers.get(str(account_id)))) is not None
         }
+        opendota_leaderboard_ranks = {
+            key: leaderboard_rank
+            for key, tier in opendota_rank_tiers.items()
+            if tier == 80 and (leaderboard_rank := _valid_leaderboard_rank(previous_leaderboard_ranks.get(key))) is not None
+        }
     else:
-        opendota_rank_tiers = _refresh_opendota_rank_tiers(
-            account_ids, previous_rank_tiers, client
+        opendota_rank_tiers, opendota_leaderboard_ranks = _refresh_opendota_rank_tiers(
+            account_ids, previous_rank_tiers, client, previous_leaderboard_ranks
         )
     anonymous_slots = sum(
         1
@@ -462,6 +482,7 @@ def collect_league_data(
         },
         "player_names": player_names,
         "opendota_rank_tiers": opendota_rank_tiers,
+        "opendota_leaderboard_ranks": opendota_leaderboard_ranks,
         "player_groups": {"core": core_ids, "neighbour": neighbour_ids},
         "matches": ordered_matches,
         "excluded_matches": excluded_matches,
@@ -548,6 +569,14 @@ def main(argv: list[str] | None = None) -> int:
             replays = record_archives(
                 data_dir=data_dir, jobs=replay_jobs, results=archives.result(), match_ids=match_ids, now=now
             )
+        if not args.incremental:
+            token = os.getenv("STRATZ_TOKEN")
+            with stratz_client(token) if token else nullcontext() as stratz_http:
+                positions = refresh_position_stats(
+                    data_dir=data_dir, account_ids=_known_account_ids(payload["matches"]), opendota=client,
+                    stratz=stratz_http, now=now, error_type=LeagueCollectionError,
+                )
+            print(f"Positions: recent games for {positions['players']} players ({positions['failed']} failed)")
     with httpx.Client(timeout=15.0, follow_redirects=True) as cdn:
         images = ensure_images(image_dir=args.output.parent.parent / "img", data_dir=args.output.parent, http=cdn)
     if token := os.getenv("STRATZ_TOKEN"):
