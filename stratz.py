@@ -4,6 +4,8 @@ per-minute snapshots for matches STRATZ never scores, which the local IMP model 
 from __future__ import annotations
 
 import math
+import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -41,13 +43,46 @@ def stratz_client(token: str) -> httpx.Client:
     )
 
 
+# STRATZ allows two IP addresses per token every 15 minutes, and every GitHub Actions run has a new one.
+# A 403 names the minutes until one frees up; each client waits for that once.
+IP_LIMIT = re.compile(r"frees up in (\d+) minute")
+MAX_IP_WAIT_MINUTES = 6
+
+
+def post_graphql(http: httpx.Client, query: str, variables: dict[str, Any] | None = None, *, sleep=time.sleep) -> dict[str, Any]:
+    for attempt in range(2):
+        response = http.post(STRATZ_URL, json={"query": query, "variables": variables or {}})
+        limit = IP_LIMIT.search(response.text) if response.status_code == 403 else None
+        if limit and attempt == 0 and not getattr(http, "_stratz_waited", False) and int(limit[1]) <= MAX_IP_WAIT_MINUTES:
+            http._stratz_waited = True
+            print(f"STRATZ: IP address limit, waiting {limit[1]} minutes for a free slot")
+            sleep((int(limit[1]) + 0.5) * 60)
+            continue
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("errors"):
+            raise StratzError(payload["errors"][0].get("message", "GraphQL error"))
+        return payload.get("data") or {}
+    raise StratzError("STRATZ IP address limit")
+
+
+RANKS_QUERY = """query($ids: [Long]!) { players(steamAccountIds: $ids) {
+  steamAccountId steamAccount { seasonRank seasonLeaderboardRank } } }"""
+
+
+def stratz_ranks(http: httpx.Client, account_ids: Iterable[int]) -> dict[str, dict[str, Any]]:
+    """Medal (rank tier) and leaderboard place per account, as STRATZ last saw them."""
+    ids = list(account_ids)
+    # STRATZ answers at most five players per request.
+    players = [player for start in range(0, len(ids), 5)
+               for player in post_graphql(http, RANKS_QUERY, {"ids": ids[start:start + 5]}).get("players") or []]
+    return {str(player["steamAccountId"]): {"rank_tier": (player.get("steamAccount") or {}).get("seasonRank"),
+                                           "leaderboard_rank": (player.get("steamAccount") or {}).get("seasonLeaderboardRank")}
+            for player in players if isinstance(player, dict) and player.get("steamAccountId")}
+
+
 def _post(http: httpx.Client, query: str, match_id: int) -> dict[str, Any]:
-    response = http.post(STRATZ_URL, json={"query": query, "variables": {"id": match_id}})
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("errors"):
-        raise StratzError(payload["errors"][0].get("message", "GraphQL error"))
-    return payload.get("data") or {}
+    return post_graphql(http, query, {"id": match_id})
 
 
 def _lane_result(match: dict[str, Any], player: dict[str, Any]) -> int:

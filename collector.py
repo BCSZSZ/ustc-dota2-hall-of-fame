@@ -19,7 +19,7 @@ from match_details import _read, ensure_images, refresh_match_details
 from replays import REPLAY_DIR, archive_all, gh_uploader, plan_downloads, read_manifest, record_archives
 from hero_meta import refresh_hero_meta
 from position_stats import refresh_position_stats
-from stratz import refresh_stratz, stratz_client
+from stratz import StratzError, refresh_stratz, stratz_client, stratz_ranks
 
 API_BASE_URL = "https://api.opendota.com/api"
 STEAM_COMMUNITY_URL = "https://steamcommunity.com"
@@ -312,6 +312,25 @@ def _valid_leaderboard_rank(value: Any) -> int | None:
     return value if type(value) is int and value > 0 else None
 
 
+def _merge_stratz_ranks(payload: dict[str, Any], ranks: dict[str, dict[str, Any]]) -> int:
+    """Fill medals and Immortal leaderboard places OpenDota did not give from STRATZ; OpenDota's stay."""
+    tiers = payload["opendota_rank_tiers"]
+    places = payload["opendota_leaderboard_ranks"]
+    filled = 0
+    for account_id in _known_account_ids(payload["matches"]):
+        key = str(account_id)
+        stratz = ranks.get(key) or {}
+        tier = _valid_rank_tier(stratz.get("rank_tier"))
+        if key not in tiers and tier is not None:
+            tiers[key] = tier
+            filled += 1
+        place = _valid_leaderboard_rank(stratz.get("leaderboard_rank"))
+        if tiers.get(key) == 80 and key not in places and place is not None:
+            places[key] = place
+            filled += 1
+    return filled
+
+
 def _latest_rank_tier(history: Any) -> int | None:
     if not isinstance(history, list):
         return None
@@ -577,9 +596,15 @@ def main(argv: list[str] | None = None) -> int:
                     data_dir=data_dir, account_ids=_known_account_ids(payload["matches"]), opendota=client,
                     stratz=stratz_http, now=now, error_type=LeagueCollectionError,
                 )
+                meta = refresh_hero_meta(data_dir=data_dir, stratz=stratz_http, opendota=client, now=now,
+                                         error_type=LeagueCollectionError)
+                print(f"Hero meta: STRATZ {'updated' if meta['stratz'] else 'kept'}, OpenDota {'updated' if meta['opendota'] else 'kept'}")
                 if stratz_http is not None:
-                    meta = refresh_hero_meta(data_dir=data_dir, http=stratz_http, now=now)
-                    print(f"Hero meta: {meta['heroes']} heroes ({'updated' if meta['updated'] else 'kept the previous file'})")
+                    try:
+                        filled = _merge_stratz_ranks(payload, stratz_ranks(stratz_http, _known_account_ids(payload["matches"])))
+                        print(f"Ranks: {filled} medals or leaderboard places filled from STRATZ")
+                    except (httpx.HTTPError, ValueError, StratzError) as error:
+                        print(f"STRATZ: ranks failed ({error}); OpenDota's stay")
             print(f"Positions: recent games for {positions['players']} players ({positions['failed']} failed)")
     with httpx.Client(timeout=15.0, follow_redirects=True) as cdn:
         images = ensure_images(image_dir=args.output.parent.parent / "img", data_dir=args.output.parent, http=cdn)

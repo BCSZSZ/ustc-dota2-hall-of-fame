@@ -16,7 +16,7 @@ from typing import Any, Iterable
 import httpx
 
 from match_details import _iso, _read, _write
-from stratz import STRATZ_URL
+from stratz import StratzError, post_graphql
 
 SAMPLE = 100
 MAX_AGE = timedelta(days=365)
@@ -68,12 +68,8 @@ def _stratz_games(http: httpx.Client, account: int, oldest: float) -> list[dict[
     """Counted games STRATZ has a position for, newest first, in the same shape."""
     games = []
     for page in range(STRATZ_PAGES):
-        response = http.post(STRATZ_URL, json={"query": STRATZ_QUERY, "variables": {"a": account, "skip": page * STRATZ_PAGE}})
-        response.raise_for_status()
-        body = response.json()
-        if body.get("errors"):
-            raise ValueError(body["errors"][0].get("message", "GraphQL error"))
-        matches = ((body.get("data") or {}).get("player") or {}).get("matches") or []
+        data = post_graphql(http, STRATZ_QUERY, {"a": account, "skip": page * STRATZ_PAGE})
+        matches = (data.get("player") or {}).get("matches") or []
         for match in matches:
             if (match.get("startDateTime") or 0) < oldest:
                 return games
@@ -95,7 +91,9 @@ def _top(heroes: dict[int, list[int]], size: int) -> list[list[int]]:
 
 def refresh_position_stats(*, data_dir: Path, account_ids: Iterable[int], opendota: Any, stratz: httpx.Client | None,
                            now: datetime, error_type: type[Exception] = Exception) -> dict[str, int]:
-    """Replace each player's position record; a player neither source answers for keeps the previous one."""
+    """Replace each player's position record from both sources. A player keeps the previous record when neither
+    answers, or when STRATZ fails and the previous record had STRATZ positions: OpenDota alone knows the lane of
+    only a few matches, so its record would be much thinner."""
     stored = _read(data_dir / "position-stats.json").get("players", {})
     oldest = (now - MAX_AGE).timestamp()
     players: dict[str, Any] = {}
@@ -110,8 +108,13 @@ def refresh_position_stats(*, data_dir: Path, account_ids: Iterable[int], opendo
         if stratz is not None:
             try:
                 stratz_games = _stratz_games(stratz, account, oldest)
-            except (httpx.HTTPError, ValueError) as error:
+            except (httpx.HTTPError, ValueError, StratzError) as error:
                 print(f"STRATZ: position history for {account} failed ({error})")
+        kept = stored.get(key)
+        if stratz is not None and stratz_games is None and kept and (kept.get("sources") or {}).get("stratz"):
+            players[key] = kept
+            failed += 1
+            continue
         if listed is None and stratz_games is None:
             failed += 1
             if key in stored:

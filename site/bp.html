@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="./styles.css?v=20261126-1" />
     <link rel="stylesheet" href="./matchmaker.css?v=8" />
     <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
-    <link rel="modulepreload" href="./bp-model.js?v=1" />
+    <link rel="modulepreload" href="./bp-model.js?v=2" />
     <link rel="modulepreload" href="./matchmaker-model.js?v=9" />
     <link rel="modulepreload" href="./shared-mmr.js?v=4" />
     <link rel="preload" href="./data/league.json" as="fetch" crossorigin />
@@ -21,7 +21,7 @@
       // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
       if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
     </script>
-    <script src="./bp.js?v=1" type="module"></script>
+    <script src="./bp.js?v=2" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">
@@ -79,7 +79,7 @@
       <details class="draft-rules">
         <summary>BP 建议怎么算</summary>
         <p>英雄池：每天从 OpenDota 取每人近一年最多 300 场公开比赛（普通模式、10 分钟以上），号位优先用 STRATZ 的判断，否则按分路和每分钟正补推断，按号位记每个英雄的场数和胜场。算某人某号位的英雄时，这个号位的场次全算，其他号位的场次算一半。</p>
-        <p>版本强势：每天从 STRATZ 取超凡入圣和冠绝一世分段最近两周每个号位每个英雄的场数和胜场。胜率先加 400 场 50% 的虚拟比赛收缩，减去 50% 就是这个英雄在这个号位的版本优势（百分点）；在这个号位的出场率不到 2% 的不算。</p>
+        <p>版本强势：每天从 STRATZ 取超凡入圣和冠绝一世分段最近两周每个号位每个英雄的场数和胜场，同时从 OpenDota 取同分段不分号位的胜率；STRATZ 那天取不到时沿用上一次的数据，从来没有时改用 OpenDota 的胜率。胜率先加 400 场 50% 的虚拟比赛收缩，减去 50% 就是这个英雄在这个号位的版本优势（百分点）；在这个号位的出场率不到 2% 的不算。</p>
         <p>拿手值（百分点）＝ 熟练度 ×（4 ＋ 本人这个英雄的胜率减本人总胜率，按 10 场收缩）＋ 版本优势。熟练度 ＝ 场数 ÷（场数 ＋ 8），8 场时为一半。</p>
         <p>Ban：对面每个英雄取对面最拿手的人的拿手值，再加第二个会玩的人的 25%；对面没人玩、但版本优势很大的英雄按版本优势的 70% 计。Pick：本方最拿手的人的拿手值，再加对面拿手值的 50%（抢下来对面就用不了）。同一英雄两边都想要时只放进 pick。分数 3 以上才推荐，按分数排成最优先 5 个、次优先 5 个，不够不凑；每档里针对同一个对手的 ban、给同一个人的 pick 最多 2 个。</p>
       </details>

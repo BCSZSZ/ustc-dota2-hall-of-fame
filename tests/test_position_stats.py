@@ -88,3 +88,13 @@ def test_falls_back_to_one_source_and_keeps_the_previous_record(tmp_path: Path) 
     assert players["7"]["pool_games"] == [SAMPLE + 30, (SAMPLE + 30) // 2] and players["7"]["pool"]["2"] == [[1, SAMPLE + 30, (SAMPLE + 30) // 2]]
     assert players["8"]["positions"]["5"] == [1, 1] and players["8"]["sources"] == {"stratz": 1, "opendota": 0}
     assert players["9"]["positions"]["2"] == [1, 1]
+
+
+def test_keeps_the_stratz_backed_record_when_stratz_fails(tmp_path: Path) -> None:
+    listed = [od(index, index, True, lane=None) for index in range(1, 6)]
+    refresh_position_stats(data_dir=tmp_path, account_ids=[7], opendota=OpenDota({7: listed}),
+                           stratz=stratz({7: [sz(index, index, "POSITION_3", True) for index in range(1, 6)]}, []), now=NOW)
+    before = read(tmp_path)["7"]
+    result = refresh_position_stats(data_dir=tmp_path, account_ids=[7], opendota=OpenDota({7: listed}), stratz=stratz({}, []), now=NOW)
+    assert result == {"players": 1, "failed": 1}
+    assert read(tmp_path)["7"] == before and before["positions"]["3"] == [5, 5]

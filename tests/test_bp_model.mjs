@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bestMetaEdge, heroPool, metaEdge, MIN_SCORE, suggestBp, TIER_SIZE } from "../site/bp-model.js";
+import { bestMetaEdge, heroPool, metaEdge, MIN_SCORE, overallEdge, suggestBp, TIER_SIZE } from "../site/bp-model.js";
 
 // Position 1 has 10 000 picks (5 000 matches); hero 1 wins 60% of 1 000, hero 2 is rarely picked.
 const meta = {
@@ -53,4 +53,14 @@ test("bans the other side's signature heroes and patch-strong ones, and picks ou
     assert.ok(list.every((entry) => entry.score >= MIN_SCORE));
   }
   assert.ok(!picked.includes(5) && !banned.includes(5), "a weak patch hero nobody plays is left out");
+});
+
+test("falls back to OpenDota's bracket win rates when STRATZ has no positions", () => {
+  const opendota = { positions: {}, overall: { 1: [3000, 1800], 2: [10, 9], 3: [7000, 3500] } };
+  const edge = 100 * ((1800 + 200) / 3400 - 0.5);
+  assert.ok(Math.abs(overallEdge(opendota, 1) - edge) < 1e-9);
+  assert.equal(overallEdge(opendota, 2), null);
+  assert.ok(Math.abs(metaEdge(opendota, 1, "4") - edge) < 1e-9);
+  assert.deepEqual(bestMetaEdge(opendota, 1), { edge: overallEdge(opendota, 1), position: null });
+  assert.equal(metaEdge(meta, 1, "1") !== overallEdge(meta, 1), true, "STRATZ positions win when present");
 });

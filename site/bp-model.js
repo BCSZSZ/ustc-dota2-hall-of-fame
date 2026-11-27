@@ -1,5 +1,6 @@
 // Ban/pick suggestions from each player's hero pool by position (position-stats.json) and the patch's
-// high-bracket hero win rates by position (hero-meta.json). Every score is in win-rate percentage points.
+// high-bracket hero win rates (hero-meta.json: STRATZ by position, OpenDota without positions as the fallback).
+// Every score is in win-rate percentage points.
 
 export const POSITIONS = Object.freeze(["1", "2", "3", "4", "5"]);
 // A familiar hero is worth this much over a random one before the player's own results on it.
@@ -28,8 +29,23 @@ const PER_PLAYER_PER_TIER = 2;
 
 const shrink = (wins, games, prior, weight) => (wins + prior * weight) / (games + weight);
 
+const hasPositions = (meta) => POSITIONS.some((position) => Object.keys(meta?.positions?.[position] ?? {}).length);
+
+// OpenDota's Divine and Immortal edge for the hero at any position, or null when it is rarely picked.
+export function overallEdge(meta, hero) {
+  const record = meta?.overall?.[hero];
+  if (!record) return null;
+  const [picks, wins] = record;
+  // Ten heroes are picked in every match.
+  const matches = Object.values(meta.overall).reduce((sum, [count]) => sum + count, 0) / 10;
+  if (!matches || picks / matches < META_MIN_PICK_RATE) return null;
+  return 100 * (shrink(wins, picks, 0.5, META_SHRINK) - 0.5);
+}
+
 // The patch edge of a hero at a position (points above 50%), or null when it is rarely picked there.
+// Without STRATZ's positions, OpenDota's edge for the hero stands for every position.
 export function metaEdge(meta, hero, position) {
+  if (!hasPositions(meta)) return overallEdge(meta, hero);
   const table = meta?.positions?.[position];
   const record = table?.[hero];
   if (!record) return null;
@@ -42,6 +58,10 @@ export function metaEdge(meta, hero, position) {
 
 // The hero's best patch edge over all positions it is picked at, with that position.
 export function bestMetaEdge(meta, hero) {
+  if (!hasPositions(meta)) {
+    const edge = overallEdge(meta, hero);
+    return edge === null ? null : { edge, position: null };
+  }
   let best = null;
   for (const position of POSITIONS) {
     const edge = metaEdge(meta, hero, position);
@@ -103,7 +123,7 @@ export function suggestBp(own, enemy, meta) {
   const ours = pools(own, meta);
   const theirs = pools(enemy, meta);
   const heroes = new Set([...ours, ...theirs].flatMap((member) => [...member.heroes.keys()]));
-  for (const table of Object.values(meta?.positions ?? {})) for (const hero of Object.keys(table)) heroes.add(Number(hero));
+  for (const table of [...Object.values(meta?.positions ?? {}), meta?.overall ?? {}]) for (const hero of Object.keys(table)) heroes.add(Number(hero));
 
   const picks = [];
   const bans = [];

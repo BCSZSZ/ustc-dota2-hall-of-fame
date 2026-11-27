@@ -1,4 +1,4 @@
-import { heroPool, metaEdge, suggestBp } from "./bp-model.js?v=1";
+import { heroPool, metaEdge, suggestBp } from "./bp-model.js?v=2";
 import { POSITION_NAMES, rateLeague, teamLineup } from "./matchmaker-model.js?v=9";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
@@ -44,10 +44,11 @@ function heroIcon(id) {
 }
 
 function metaText(hero, position) {
+  if (metaEdge(heroMeta, hero, position) === null) return "";
   const record = heroMeta?.positions?.[position]?.[hero];
-  if (!record || metaEdge(heroMeta, hero, position) === null) return "";
-  const [matches, wins] = record;
-  return `版本 ${position} 号位胜率 ${onePercent.format(wins / matches)}（${integer.format(matches)} 场）`;
+  if (record) return `版本 ${position} 号位胜率 ${onePercent.format(record[1] / record[0])}（${integer.format(record[0])} 场）`;
+  const [picks, wins] = heroMeta.overall[hero];
+  return `版本胜率 ${onePercent.format(wins / picks)}（${integer.format(picks)} 场，不分号位）`;
 }
 
 function chosen(side) {
@@ -116,7 +117,7 @@ function adviceItem(kind, item) {
   if (kind === "ban") {
     if (item.target) lines.push(`针对 ${who(item.target)}：${playerRecord(item.entry)}`);
     if (item.also) lines.push(`${item.also.player.name} 也会玩`);
-    const patch = item.target ? metaText(item.hero, item.target.position) : item.patch ? metaText(item.hero, item.patch.position) : "";
+    const patch = item.target ? metaText(item.hero, item.target.position) : item.patch ? metaText(item.hero, item.patch.position ?? "1") : "";
     if (patch) lines.push((item.target ? "" : "版本强势：") + patch);
   } else {
     lines.push(`给 ${who(item.for)}：${playerRecord(item.entry)}`);
@@ -159,8 +160,9 @@ function calculate() {
   const lineups = { A: lineupOf("A"), B: lineupOf("B") };
   poolColumns.replaceChildren(poolColumn("A", lineups.A), poolColumn("B", lineups.B));
   adviceColumns.replaceChildren(adviceColumn("A", lineups.A, lineups.B), adviceColumn("B", lineups.B, lineups.A));
+  const updated = (key) => heroMeta?.[key]?.slice(0, 10) ?? "无";
   metaNote.textContent = heroMeta
-    ? `版本数据：${heroMeta.bracket_label ?? "高分段"}，${heroMeta.window_label ?? "近期"}，${heroMeta.generated_at_utc.slice(0, 10)} 更新。先看甲队立场，再看乙队立场。`
+    ? `版本数据：${heroMeta.bracket_label ?? "高分段"}。分号位胜率来自 STRATZ 最近 2 周排位（${updated("positions_updated_utc")} 更新），没有时用 OpenDota 的不分号位胜率（${updated("overall_updated_utc")} 更新）。先看甲队立场，再看乙队立场。`
     : "版本数据读取失败，只按双方的英雄池推荐。";
   poolsSection.hidden = false;
   adviceSection.hidden = false;
