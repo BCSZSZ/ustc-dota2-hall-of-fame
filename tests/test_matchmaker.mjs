@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildLeagueRoster, calibrateModel, DEFAULT_MODEL, describeRankTier, estimateRankMmr, findBalancedTeams, OPTIMAL_STRATEGY, PICK_TURNS, suggestPickOrder,
-  attachPositionRatings, POSITION_WEIGHTS, RARE_POSITION_PENALTY, positionProfile, rateLeague } from "../site/matchmaker-model.js";
+  attachPositionRatings, describeMedals, medalEstimate, POSITION_WEIGHTS, RARE_POSITION_PENALTY, positionProfile, rateLeague } from "../site/matchmaker-model.js";
 
 function match(matchId, startTime, radiantWin, firstAccountId = 1) {
   return {
@@ -78,6 +78,7 @@ test("seeds Elo with manual, medal, and medal-median baselines and applies each 
     inhouseRating: 2400 + delta,
     inhouseWeight: 1 / 37,
     rankTier: 75,
+    stratzRankTier: null,
     leaderboardRank: null,
     ratingSource: "manual",
     rating: 2400 + (1 / 37) * ((2400 + delta) - 2400),
@@ -94,6 +95,7 @@ test("seeds Elo with manual, medal, and medal-median baselines and applies each 
     inhouseRating: 5520 + delta,
     inhouseWeight: 1 / 37,
     rankTier: null,
+    stratzRankTier: null,
     leaderboardRank: null,
     ratingSource: "median",
     rating: 5520 + (1 / 37) * ((5520 + delta) - 5520),
@@ -182,6 +184,7 @@ test("discovers visible players in anonymous matches and ignores ratings from th
     inhouseRating: null,
     inhouseWeight: 0,
     rankTier: null,
+    stratzRankTier: null,
     leaderboardRank: null,
     ratingSource: "unavailable",
     rating: null,
@@ -435,4 +438,23 @@ test("tags each position as most played, regular or rare", () => {
   const rated = rateLeague(snapshot, { 2: 4100 }, { players: { 1: record([[30, 15], [20, 10]]) } });
   assert.equal(rated.find((entry) => entry.accountId === 2).baseRating, 4100);
   assert.equal(positionProfile(rated.find((entry) => entry.accountId === 1))[0].tag, "main");
+});
+
+test("combines OpenDota's and STRATZ's medals", () => {
+  assert.equal(medalEstimate(72, undefined, 65), (4920 + 4543) / 2);
+  assert.equal(medalEstimate(72, undefined, 72), 4920);
+  assert.equal(medalEstimate(null, undefined, 65), 4543);
+  assert.equal(medalEstimate(72, undefined, null), 4920);
+  assert.equal(medalEstimate(80, 302, 80), 7287, "only OpenDota knows the leaderboard place");
+  assert.equal(medalEstimate(80, 302, 75), (7287 + 5520) / 2);
+  assert.equal(describeMedals(72, undefined, 65), "OpenDota 超凡入圣 2 星 / STRATZ 万古流芳 5 星");
+  assert.equal(describeMedals(72, undefined, 72), "超凡入圣 2 星");
+  assert.equal(describeMedals(undefined, undefined, 65), "万古流芳 5 星");
+
+  const snapshot = { matches: [match(1, 100, true)], opendota_rank_tiers: { 1: 72 }, stratz_rank_tiers: { 1: 65, 2: 54 } };
+  const players = playersById(snapshot, {});
+  assert.equal(players.get(1).baseRating, (4920 + 4543) / 2);
+  assert.equal(players.get(1).stratzRankTier, 65);
+  assert.equal(players.get(2).baseRating, 3619);
+  assert.equal(players.get(2).ratingSource, "medal");
 });

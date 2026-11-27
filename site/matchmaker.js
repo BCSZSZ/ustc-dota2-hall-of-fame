@@ -1,7 +1,7 @@
 import {
-  attachPositionRatings, buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams,
+  attachPositionRatings, buildLeagueRoster, calibrateModel, describeMedals, findBalancedTeams,
   POSITION_MIN_GAMES, POSITION_NAMES, positionProfile, suggestPickOrder,
-} from "./matchmaker-model.js?v=9";
+} from "./matchmaker-model.js?v=10";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#draftForm");
@@ -63,7 +63,7 @@ function ratingSource(player) {
 }
 
 function scoreDetails(player) {
-  const medal = describeRankTier(player.rankTier, player.leaderboardRank);
+  const medal = describeMedals(player.rankTier, player.leaderboardRank, player.stratzRankTier);
   const source = player.ratingSource === "medal" ? medal + "估分" : ratingSource(player);
   return source + " " + integer.format(player.baseRating) +
     " · 内战 Elo " + integer.format(player.inhouseRating) +
@@ -171,7 +171,7 @@ function playerCard(player, role, slot) {
   if (role) who.append(make("span", "draft-card-role", `${teamNames[role]}队长`));
   const name = make("h3", "draft-card-name", player.name);
   name.title = `${player.name}（${player.accountId}）`;
-  const medal = describeRankTier(player.rankTier, player.leaderboardRank);
+  const medal = describeMedals(player.rankTier, player.leaderboardRank, player.stratzRankTier);
   who.append(name, make("small", "draft-meta",
     `${player.ratingSource === "manual" ? "手填天梯分" : medal || ratingSource(player)} · 内战 ${player.games} 场`));
   const score = make("div", "draft-card-score");

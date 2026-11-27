@@ -1,4 +1,4 @@
-import { buildLeagueRoster, describeRankTier, estimateRankMmr } from "./matchmaker-model.js?v=9";
+import { buildLeagueRoster, describeMedals, medalEstimate } from "./matchmaker-model.js?v=10";
 import { loadSharedMmr, MAX_ALIAS_CHARS, saveSharedMmr, validAlias } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#mmrForm");
@@ -138,9 +138,9 @@ function buildRow(player) {
   const identity = make("div", "mmr-player");
   identity.append(make("strong", "", player.name), make("small", "", String(player.accountId)));
   const rank = make("div", "mmr-rank");
-  const tierEstimate = estimateRankMmr(player.rankTier, player.leaderboardRank);
+  const tierEstimate = medalEstimate(player.rankTier, player.leaderboardRank, player.stratzRankTier);
   rank.append(
-    make("span", "", describeRankTier(player.rankTier, player.leaderboardRank) || "无公开段位"),
+    make("span", "", describeMedals(player.rankTier, player.leaderboardRank, player.stratzRankTier) || "无公开段位"),
     make("small", "", tierEstimate !== null ? "约 " + integer.format(tierEstimate) :
       player.ratingSource === "median" ? "暂估 " + integer.format(player.baseRating) : ""),
   );

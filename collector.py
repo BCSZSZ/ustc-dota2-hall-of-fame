@@ -6,7 +6,7 @@ import os
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -19,7 +19,7 @@ from match_details import _read, ensure_images, refresh_match_details
 from replays import REPLAY_DIR, archive_all, gh_uploader, plan_downloads, read_manifest, record_archives
 from hero_meta import refresh_hero_meta
 from position_stats import refresh_position_stats
-from stratz import StratzError, refresh_stratz, stratz_client, stratz_ranks
+from stratz import StratzError, compare_matches, compare_positions, refresh_stratz, stratz_client, stratz_league_match_ids, stratz_ranks
 
 API_BASE_URL = "https://api.opendota.com/api"
 STEAM_COMMUNITY_URL = "https://steamcommunity.com"
@@ -312,23 +312,19 @@ def _valid_leaderboard_rank(value: Any) -> int | None:
     return value if type(value) is int and value > 0 else None
 
 
-def _merge_stratz_ranks(payload: dict[str, Any], ranks: dict[str, dict[str, Any]]) -> int:
-    """Fill medals and Immortal leaderboard places OpenDota did not give from STRATZ; OpenDota's stay."""
-    tiers = payload["opendota_rank_tiers"]
-    places = payload["opendota_leaderboard_ranks"]
-    filled = 0
-    for account_id in _known_account_ids(payload["matches"]):
-        key = str(account_id)
-        stratz = ranks.get(key) or {}
-        tier = _valid_rank_tier(stratz.get("rank_tier"))
-        if key not in tiers and tier is not None:
-            tiers[key] = tier
-            filled += 1
-        place = _valid_leaderboard_rank(stratz.get("leaderboard_rank"))
-        if tiers.get(key) == 80 and key not in places and place is not None:
-            places[key] = place
-            filled += 1
-    return filled
+def _apply_stratz_ranks(payload: dict[str, Any], ranks: dict[str, dict[str, Any]] | None, previous: dict[str, Any]) -> int:
+    """Store STRATZ's medals beside OpenDota's (the page combines the two) and fill Immortal leaderboard places
+    OpenDota lacks. Without an answer from STRATZ, its previous medals stay. Returns how many medals differ."""
+    accounts = [str(account_id) for account_id in _known_account_ids(payload["matches"])]
+    if ranks is None:
+        payload["stratz_rank_tiers"] = {key: tier for key in accounts if (tier := _valid_rank_tier(previous.get(key))) is not None}
+    else:
+        payload["stratz_rank_tiers"] = {key: tier for key in accounts if (tier := _valid_rank_tier((ranks.get(key) or {}).get("rank_tier"))) is not None}
+        for key in accounts:
+            place = _valid_leaderboard_rank((ranks.get(key) or {}).get("leaderboard_rank"))
+            if payload["opendota_rank_tiers"].get(key) == 80 and key not in payload["opendota_leaderboard_ranks"] and place is not None:
+                payload["opendota_leaderboard_ranks"][key] = place
+    return sum(1 for key, tier in payload["stratz_rank_tiers"].items() if payload["opendota_rank_tiers"].get(key) not in (None, tier))
 
 
 def _latest_rank_tier(history: Any) -> int | None:
@@ -406,7 +402,10 @@ def collect_league_data(
     steam_client: httpx.Client | None = None,
     incremental: bool = False,
     raw_by_id: dict[int, dict[str, Any]] | None = None,
+    stratz_match_ids: list[int] | None = None,
 ) -> dict[str, Any]:
+    """`stratz_match_ids` is STRATZ's list of the league's matches, joined with OpenDota's; None when STRATZ
+    gave none this run, and then every match already collected stays listed."""
     league = client.get_json(f"/leagues/{league_id}")
     match_ids_raw = client.get_json(f"/leagues/{league_id}/matchIds")
     if not isinstance(league, dict):
@@ -414,8 +413,10 @@ def collect_league_data(
     if not isinstance(match_ids_raw, list):
         raise LeagueCollectionError("OpenDota returned an invalid match-ID list")
 
-    match_ids = sorted({int(match_id) for match_id in match_ids_raw if int(match_id) > 0})
+    opendota_ids = {int(match_id) for match_id in match_ids_raw if int(match_id) > 0}
     existing, player_names, previous_rank_tiers, previous_leaderboard_ranks = _load_existing(output_path, league_id)
+    stratz_ids = {match_id for match_id in stratz_match_ids or [] if match_id > 0}
+    match_ids = sorted(opendota_ids | stratz_ids | (set(existing) if stratz_match_ids is None else set()))
     refresh_ids = set(match_ids[-refresh_recent:]) if refresh_recent > 0 else set()
     unavailable: list[dict[str, Any]] = []
     incomplete_rosters: list[int] = []
@@ -485,6 +486,13 @@ def collect_league_data(
         "source": "OpenDota public API",
         "metadata": {
             "match_ids_returned": len(match_ids),
+            # The two sources' league match lists, and the IDs only one of them had.
+            "match_id_sources": {
+                "opendota": len(opendota_ids),
+                "stratz": None if stratz_match_ids is None else len(stratz_ids),
+                "only_opendota": sorted(opendota_ids - stratz_ids) if stratz_match_ids is not None else [],
+                "only_stratz": sorted(stratz_ids - opendota_ids),
+            },
             "matches_available": len(ordered_matches),
             "season_start_utc": datetime.fromtimestamp(SEASON_START, UTC).isoformat(),
             "core_roster_seed_end_utc": datetime.fromtimestamp(CORE_ROSTER_SEED_END, UTC).isoformat(),
@@ -542,12 +550,19 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     args = build_parser().parse_args(argv)
-    with (
-        OpenDotaLeagueClient(
-            api_key=os.getenv("OPENDOTA_API_KEY"), max_paid_calls=args.max_paid_calls
-        ) as client,
-        httpx.Client(base_url=STEAM_COMMUNITY_URL, timeout=5.0) as steam_client,
-    ):
+    previous = _read(args.output)
+    with ExitStack() as stack:
+        client = stack.enter_context(OpenDotaLeagueClient(api_key=os.getenv("OPENDOTA_API_KEY"), max_paid_calls=args.max_paid_calls))
+        steam_client = stack.enter_context(httpx.Client(base_url=STEAM_COMMUNITY_URL, timeout=5.0))
+        # One STRATZ client for the run, so its IP-limit wait happens at most once.
+        token = os.getenv("STRATZ_TOKEN")
+        stratz_http = stack.enter_context(stratz_client(token)) if token else None
+        stratz_ids = None
+        if stratz_http is not None:
+            try:
+                stratz_ids = stratz_league_match_ids(stratz_http, args.league_id)
+            except (httpx.HTTPError, ValueError, StratzError) as error:
+                print(f"STRATZ: league match list failed ({error}); keeping every match already collected")
         raw_by_id: dict[int, dict[str, Any]] = {}
         payload = collect_league_data(
             league_id=args.league_id,
@@ -557,7 +572,11 @@ def main(argv: list[str] | None = None) -> int:
             steam_client=None if args.incremental else steam_client,
             incremental=args.incremental,
             raw_by_id=raw_by_id,
+            stratz_match_ids=stratz_ids,
         )
+        sources = payload["metadata"]["match_id_sources"]
+        print(f"League match IDs: OpenDota {sources['opendota']}, STRATZ {sources['stratz']}, "
+              f"only OpenDota {len(sources['only_opendota'])}, only STRATZ {sources['only_stratz']}")
         data_dir = args.output.parent
         match_ids = [match["match_id"] for match in payload["matches"]]
         now = datetime.now(UTC)
@@ -589,32 +608,37 @@ def main(argv: list[str] | None = None) -> int:
             replays = record_archives(
                 data_dir=data_dir, jobs=replay_jobs, results=archives.result(), match_ids=match_ids, now=now
             )
+        ranks = None
         if not args.incremental:
-            token = os.getenv("STRATZ_TOKEN")
-            with stratz_client(token) if token else nullcontext() as stratz_http:
-                positions = refresh_position_stats(
-                    data_dir=data_dir, account_ids=_known_account_ids(payload["matches"]), opendota=client,
-                    stratz=stratz_http, now=now, error_type=LeagueCollectionError,
-                )
-                meta = refresh_hero_meta(data_dir=data_dir, stratz=stratz_http, opendota=client, now=now,
-                                         error_type=LeagueCollectionError)
-                print(f"Hero meta: STRATZ {'updated' if meta['stratz'] else 'kept'}, OpenDota {'updated' if meta['opendota'] else 'kept'}")
-                if stratz_http is not None:
-                    try:
-                        filled = _merge_stratz_ranks(payload, stratz_ranks(stratz_http, _known_account_ids(payload["matches"])))
-                        print(f"Ranks: {filled} medals or leaderboard places filled from STRATZ")
-                    except (httpx.HTTPError, ValueError, StratzError) as error:
-                        print(f"STRATZ: ranks failed ({error}); OpenDota's stay")
-            print(f"Positions: recent games for {positions['players']} players ({positions['failed']} failed)")
-    with httpx.Client(timeout=15.0, follow_redirects=True) as cdn:
-        images = ensure_images(image_dir=args.output.parent.parent / "img", data_dir=args.output.parent, http=cdn)
-    if token := os.getenv("STRATZ_TOKEN"):
-        with stratz_client(token) as stratz_http:
+            positions = refresh_position_stats(
+                data_dir=data_dir, account_ids=_known_account_ids(payload["matches"]), opendota=client,
+                stratz=stratz_http, now=now, error_type=LeagueCollectionError,
+            )
+            print(f"Positions: recent games for {positions['players']} players ({positions['failed']} kept from the previous run)")
+            meta = refresh_hero_meta(data_dir=data_dir, stratz=stratz_http, opendota=client, now=now,
+                                     error_type=LeagueCollectionError)
+            print(f"Hero meta: STRATZ {'updated' if meta['stratz'] else 'kept'}, OpenDota {'updated' if meta['opendota'] else 'kept'}")
+            if stratz_http is not None:
+                try:
+                    ranks = stratz_ranks(stratz_http, _known_account_ids(payload["matches"]))
+                except (httpx.HTTPError, ValueError, StratzError) as error:
+                    print(f"STRATZ: ranks failed ({error}); keeping its previous medals")
+        differ = _apply_stratz_ranks(payload, ranks, previous.get("stratz_rank_tiers") or {})
+        print(f"Ranks: STRATZ {'updated' if ranks is not None else 'kept'}, {differ} medals differ from OpenDota")
+        with httpx.Client(timeout=15.0, follow_redirects=True) as cdn:
+            images = ensure_images(image_dir=args.output.parent.parent / "img", data_dir=args.output.parent, http=cdn)
+        if stratz_http is not None:
             stratz = refresh_stratz(data_dir=data_dir, match_ids=match_ids, http=stratz_http, now=now)
-        print(f"STRATZ: {stratz['scored']} matches with IMP, {stratz['fetched']} fetched, {stratz['waiting']} waiting, "
-              f"{stratz['per_minute']} with per-minute data for the local estimate")
-    else:
-        print("STRATZ: no STRATZ_TOKEN, IMP and win chances not refreshed")
+            print(f"STRATZ: {stratz['scored']} matches with IMP, {stratz['fetched']} fetched, {stratz['waiting']} waiting, "
+                  f"{stratz['per_minute']} with per-minute data for the local estimate")
+            stratz_matches = _read(data_dir / "stratz.json").get("matches", {})
+            problems = compare_matches(payload["matches"], stratz_matches) + compare_positions(
+                _read(data_dir / "matches.json").get("matches", []), _read(data_dir / "positions.json"), stratz_matches)
+            print(f"Cross-check with STRATZ: {len(problems)} disagreements")
+            for problem in problems:
+                print(f"  {problem}")
+        else:
+            print("STRATZ: no STRATZ_TOKEN, IMP and win chances not refreshed")
     write_snapshot(args.output, payload)
     print(f"Images: {images} new hero/item images saved")
     print(f"Replays: {replays['archived']} archived to Releases, {replays['waiting']} waiting for a retry")

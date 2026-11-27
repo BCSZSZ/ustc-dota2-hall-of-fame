@@ -17,7 +17,10 @@ from match_details import GIVE_UP_AFTER, _iso, _read, _write, schedule_retry
 STRATZ_URL = "https://api.stratz.com/graphql"
 # STRATZ asks every API request to carry this User-Agent.
 USER_AGENT = "STRATZ_API"
-MATCH_QUERY = "query($id: Long!) { match(id: $id) { rank winRates players { playerSlot imp } } }"
+# The result, heroes, accounts and positions are kept to cross-check OpenDota's copy of the match.
+MATCH_QUERY = ("query($id: Long!) { match(id: $id) { rank winRates didRadiantWin "
+               "players { playerSlot imp heroId steamAccountId position } } }")
+LEAGUE_QUERY = "query($id: Int!, $skip: Int!) { league(id: $id) { matches(request: {take: 100, skip: $skip}) { id } } }"
 RETRY_DOWNLOAD = "mutation($id: Long!) { retryMatchDownload(matchId: $id) }"
 # Per-minute stats and STRATZ's per-minute average for the hero and position, which IMP is measured against.
 MINUTE_FIELDS = """durationSeconds topLaneOutcome midLaneOutcome bottomLaneOutcome
@@ -148,7 +151,56 @@ def summarise(match: dict[str, Any] | None) -> dict[str, Any] | None:
         "rank": match.get("rank"),
         "imp": imp,
         "win": [round(value * 100) for value in match.get("winRates") or []],
+        "radiant_win": match.get("didRadiantWin"),
+        # Per player slot: [hero ID, account ID or null, position 1-5 or null].
+        "players": {str(player.get("playerSlot")): [player.get("heroId"), player.get("steamAccountId"),
+                                                    int(str(player.get("position") or "")[-1:] or 0) or None]
+                    for player in players},
     }
+
+
+def stratz_league_match_ids(http: httpx.Client, league_id: int) -> list[int]:
+    ids: list[int] = []
+    for skip in range(0, 2000, 100):
+        page = ((post_graphql(http, LEAGUE_QUERY, {"id": league_id, "skip": skip}).get("league") or {}).get("matches") or [])
+        ids += [match["id"] for match in page if isinstance(match.get("id"), int)]
+        if len(page) < 100:
+            break
+    return ids
+
+
+def compare_positions(summaries: Iterable[dict[str, Any]], corrections: dict[str, Any], stratz: dict[str, Any]) -> list[str]:
+    """Where STRATZ's position for a league player differs from ours (OpenDota's estimate, or the replay or
+    manual correction in positions.json)."""
+    problems = []
+    for match in summaries:
+        key = str(match.get("match_id"))
+        theirs = (stratz.get(key) or {}).get("players") or {}
+        for player in match.get("players", []):
+            slot = str(player.get("slot"))
+            ours = ((corrections.get(key) or {}).get(slot) or {}).get("pos") or player.get("pos")
+            position = (theirs.get(slot) or [None, None, None])[2]
+            if ours and position and ours != position:
+                problems.append(f"{key} slot {slot}: position {ours} vs STRATZ {position}")
+    return problems
+
+
+def compare_matches(matches: Iterable[dict[str, Any]], stratz: dict[str, Any]) -> list[str]:
+    """Where STRATZ's copy of a counted match disagrees with OpenDota's: result, hero or account per slot."""
+    problems = []
+    for match in matches:
+        theirs = stratz.get(str(match["match_id"]))
+        if not theirs or "players" not in theirs:
+            continue
+        if theirs.get("radiant_win") is not None and theirs["radiant_win"] != match.get("radiant_win"):
+            problems.append(f"{match['match_id']}: result differs")
+        for player in match.get("players", []):
+            hero, account, _ = theirs["players"].get(str(player.get("player_slot")), [None, None, None])
+            if hero and player.get("hero_id") and hero != player["hero_id"]:
+                problems.append(f"{match['match_id']} slot {player['player_slot']}: hero {player['hero_id']} vs {hero}")
+            if account and player.get("account_id") and account != player["account_id"]:
+                problems.append(f"{match['match_id']} slot {player['player_slot']}: account {player['account_id']} vs {account}")
+    return problems
 
 
 def refresh_stratz(*, data_dir: Path, match_ids: Iterable[int], http: httpx.Client, now: datetime) -> dict[str, int]:
@@ -167,7 +219,8 @@ def refresh_stratz(*, data_dir: Path, match_ids: Iterable[int], http: httpx.Clie
     for match_id in ids:
         key = str(match_id)
         entry = queue.get(key)
-        if key in known:
+        # Matches stored before the cross-check fields existed are fetched once more.
+        if key in known and "players" in known[key]:
             continue
         if match_id not in unavailable and not (entry and datetime.fromisoformat(entry["next_check_utc"]) > now):
             try:

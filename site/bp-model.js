@@ -1,5 +1,5 @@
 // Ban/pick suggestions from each player's hero pool by position (position-stats.json) and the patch's
-// high-bracket hero win rates (hero-meta.json: STRATZ by position, OpenDota without positions as the fallback).
+// high-bracket hero win rates (hero-meta.json: STRATZ by position and OpenDota without positions, combined).
 // Every score is in win-rate percentage points.
 
 export const POSITIONS = Object.freeze(["1", "2", "3", "4", "5"]);
@@ -23,9 +23,11 @@ const SECOND_THREAT_WEIGHT = 0.25;
 // Picking a hero the other side would play denies it; that adds this share of their value.
 const DENY_WEIGHT = 0.5;
 export const MIN_SCORE = 3;
-export const TIER_SIZE = 5;
-// At most this many entries per tier for one player's heroes, or aimed at one opponent.
-const PER_PLAYER_PER_TIER = 2;
+// Bans and picks are two separate lists of the highest-priority heroes; a hero may be in both (ban it or take it
+// with the first pick), since Captains Mode alternates them and the order is the captains' call.
+export const LIST_SIZE = 5;
+// At most this many bans aimed at one opponent, or picks for one player.
+const PER_PLAYER = 2;
 
 const shrink = (wins, games, prior, weight) => (wins + prior * weight) / (games + weight);
 
@@ -42,18 +44,33 @@ export function overallEdge(meta, hero) {
   return 100 * (shrink(wins, picks, 0.5, META_SHRINK) - 0.5);
 }
 
-// The patch edge of a hero at a position (points above 50%), or null when it is rarely picked there.
-// Without STRATZ's positions, OpenDota's edge for the hero stands for every position.
+// STRATZ's edge for the hero over all positions.
+function stratzOverallEdge(meta, hero) {
+  let matches = 0;
+  let wins = 0;
+  for (const position of POSITIONS) {
+    const [count = 0, won = 0] = meta.positions[position]?.[hero] ?? [];
+    matches += count;
+    wins += won;
+  }
+  return matches ? 100 * (shrink(wins, matches, 0.5, META_SHRINK) - 0.5) : null;
+}
+
+// The patch edge of a hero at a position (points above 50%), or null when it is rarely picked there. STRATZ
+// gives the edge by position; its level moves halfway to OpenDota's overall edge for the hero, so both sources
+// count. Without STRATZ's positions, OpenDota's edge stands for every position.
 export function metaEdge(meta, hero, position) {
-  if (!hasPositions(meta)) return overallEdge(meta, hero);
-  const table = meta?.positions?.[position];
+  const opendota = overallEdge(meta, hero);
+  if (!hasPositions(meta)) return opendota;
+  const table = meta.positions[position];
   const record = table?.[hero];
   if (!record) return null;
   const [matches, wins] = record;
   const picks = Object.values(table).reduce((sum, [count]) => sum + count, 0);
   // Each match has two players at every position.
   if (!picks || (2 * matches) / picks < META_MIN_PICK_RATE) return null;
-  return 100 * (shrink(wins, matches, 0.5, META_SHRINK) - 0.5);
+  const edge = 100 * (shrink(wins, matches, 0.5, META_SHRINK) - 0.5);
+  return opendota === null ? edge : edge + (opendota - stratzOverallEdge(meta, hero)) / 2;
 }
 
 // The hero's best patch edge over all positions it is picked at, with that position.
@@ -100,22 +117,17 @@ function pools(side, meta) {
   return side.map((member) => ({ ...member, heroes: new Map(heroPool(member.record, member.position, meta).map((entry) => [entry.hero, entry])) }));
 }
 
-function takeTiers(candidates, owner) {
-  const tiers = [[], []];
-  const used = new Set();
-  for (const tier of tiers) {
-    const counts = new Map();
-    for (const candidate of candidates) {
-      if (tier.length === TIER_SIZE) break;
-      if (used.has(candidate.hero)) continue;
-      const key = owner(candidate);
-      if (key !== null && (counts.get(key) ?? 0) >= PER_PLAYER_PER_TIER) continue;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-      used.add(candidate.hero);
-      tier.push(candidate);
-    }
+function takeTop(candidates, owner) {
+  const list = [];
+  const counts = new Map();
+  for (const candidate of candidates) {
+    if (list.length === LIST_SIZE) break;
+    const key = owner(candidate);
+    if (key !== null && (counts.get(key) ?? 0) >= PER_PLAYER) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    list.push(candidate);
   }
-  return tiers;
+  return list;
 }
 
 // Suggestions from `own`'s side: heroes to ban from `enemy` and heroes for `own` to pick.
@@ -139,17 +151,22 @@ export function suggestBp(own, enemy, meta) {
       .sort((left, right) => right.entry.value - left.entry.value)[0];
     const pickScore = mine ? mine.entry.value + DENY_WEIGHT * threat : -Infinity;
 
-    // A hero both sides want is picked, not banned.
-    if (mine && pickScore >= MIN_SCORE && pickScore >= banScore) {
+    if (mine && pickScore >= MIN_SCORE) {
       picks.push({ hero, score: pickScore, for: mine.member, entry: mine.entry, denies: threats[0]?.member ?? null, threatEntry: threats[0]?.entry ?? null });
-    } else if (banScore >= MIN_SCORE) {
+    }
+    if (banScore >= MIN_SCORE) {
       const target = threat >= metaOnly ? threats[0] : null;
       bans.push({ hero, score: banScore, target: target?.member ?? null, entry: target?.entry ?? null, also: threats[1]?.member ?? null, patch });
     }
   }
   const byScore = (left, right) => right.score - left.score || left.hero - right.hero;
-  return {
-    bans: takeTiers(bans.sort(byScore), (ban) => ban.target?.player.accountId ?? null),
-    picks: takeTiers(picks.sort(byScore), (pick) => pick.for.player.accountId),
+  const top = {
+    bans: takeTop(bans.sort(byScore), (ban) => ban.target?.player.accountId ?? null),
+    picks: takeTop(picks.sort(byScore), (pick) => pick.for.player.accountId),
   };
+  // A hero in both lists is contested: ban it, or take it with the first pick.
+  const picked = new Set(top.picks.map((pick) => pick.hero));
+  const banned = new Set(top.bans.map((ban) => ban.hero));
+  for (const entry of [...top.bans, ...top.picks]) entry.contested = picked.has(entry.hero) && banned.has(entry.hero);
+  return top;
 }

@@ -72,7 +72,8 @@ def test_lists_opendota_games_and_prefers_stratz_positions(tmp_path: Path) -> No
     assert read(tmp_path)["7"] == {"games": 4, "since": "2026-11-25", "sources": {"stratz": 2, "opendota": 2},
                                    "positions": {"1": [0, 0], "2": [2, 1], "3": [1, 0], "4": [1, 1], "5": [0, 0]},
                                    "heroes": [[9, 2, 1], [7, 1, 1], [5, 1, 0]], "pool_games": [4, 2],
-                                   "pool": {"1": [], "2": [[9, 2, 1]], "3": [[5, 1, 0]], "4": [[7, 1, 1]], "5": []}}
+                                   "pool": {"1": [], "2": [[9, 2, 1]], "3": [[5, 1, 0]], "4": [[7, 1, 1]], "5": []},
+                                   "position_check": [0, 1]}
 
 
 def test_falls_back_to_one_source_and_keeps_the_previous_record(tmp_path: Path) -> None:
@@ -98,3 +99,13 @@ def test_keeps_the_stratz_backed_record_when_stratz_fails(tmp_path: Path) -> Non
     result = refresh_position_stats(data_dir=tmp_path, account_ids=[7], opendota=OpenDota({7: listed}), stratz=stratz({}, []), now=NOW)
     assert result == {"players": 1, "failed": 1}
     assert read(tmp_path)["7"] == before and before["positions"]["3"] == [5, 5]
+
+
+def test_joins_both_match_lists(tmp_path: Path) -> None:
+    listed = [od(1, 1, True, lane=2, hero=3)]
+    result = refresh_position_stats(data_dir=tmp_path, account_ids=[7], opendota=OpenDota({7: listed}),
+                                    stratz=stratz({7: [sz(1, 1, "POSITION_2", True), sz(2, 2, "POSITION_5", False)]}, []), now=NOW)
+    record = read(tmp_path)["7"]
+    assert result == {"players": 1, "failed": 0}
+    assert record["positions"]["2"] == [1, 1] and record["positions"]["5"] == [1, 0]
+    assert record["position_check"] == [1, 1] and record["heroes"][0] == [3, 1, 1]

@@ -65,6 +65,15 @@ export function describeRankTier(rankTier, place) {
   return stars ? `${medal.name} ${stars} 星` : medal.name;
 }
 
+// "超凡入圣 2 星", or both medals when OpenDota and STRATZ disagree.
+export function describeMedals(rankTier, place, stratzTier) {
+  const opendota = describeRankTier(rankTier, place);
+  const stratz = describeRankTier(stratzTier);
+  if (!stratz || stratzTier === rankTier) return opendota || stratz;
+  if (!opendota) return stratz;
+  return `OpenDota ${opendota} / STRATZ ${stratz}`;
+}
+
 export function estimateRankMmr(rankTier, place) {
   const medal = getMedal(rankTier);
   if (!medal) return null;
@@ -75,6 +84,16 @@ export function estimateRankMmr(rankTier, place) {
   }
   const stars = rankTier % 10;
   return medal.estimate + ((stars || 3) - 3) * (medal.starWidth ?? 154);
+}
+
+// OpenDota's and STRATZ's medals combined: the mean of the two estimates when both exist. Two Immortal
+// medals keep OpenDota's estimate, since only OpenDota knows the leaderboard place.
+export function medalEstimate(rankTier, place, stratzTier) {
+  const opendota = estimateRankMmr(rankTier, place);
+  const stratz = estimateRankMmr(stratzTier);
+  if (opendota === null || stratz === null) return opendota ?? stratz;
+  if (rankTier === 80 && stratzTier === 80) return opendota;
+  return (opendota + stratz) / 2;
 }
 
 function average(ratings) {
@@ -142,13 +161,15 @@ function prepareLeague(snapshot, manualMmr) {
   for (const entry of league.values()) {
     const rankTier = snapshot.opendota_rank_tiers?.[entry.accountId];
     const place = snapshot.opendota_leaderboard_ranks?.[entry.accountId];
-    const medalRating = estimateRankMmr(rankTier, place);
+    const stratzTier = snapshot.stratz_rank_tiers?.[entry.accountId];
+    const medalRating = medalEstimate(rankTier, place, stratzTier);
     const manualRating = manualMmr?.[entry.accountId];
     const hasManual = Number.isSafeInteger(manualRating) && manualRating >= 0 && manualRating <= 99999;
     if (medalRating !== null) medalRatings.push(medalRating);
     if (hasManual) manualRatings.push(manualRating);
 
-    entry.rankTier = medalRating === null ? null : rankTier;
+    entry.rankTier = estimateRankMmr(rankTier) === null ? null : rankTier;
+    entry.stratzRankTier = estimateRankMmr(stratzTier) === null ? null : stratzTier;
     entry.leaderboardRank = leaderboardPlace(entry.rankTier, place);
     entry.baseRating = hasManual ? manualRating : medalRating;
     entry.ratingSource = hasManual ? "manual" : medalRating === null ? "unavailable" : "medal";
@@ -196,7 +217,7 @@ export function buildLeagueRoster(snapshot, manualMmr = {}, model = DEFAULT_MODE
   const prepared = prepareLeague(snapshot, manualMmr);
   const inhouse = replayInhouse(prepared, model);
   return [...prepared.league.values()].map((entry) => {
-    const { accountId, name, games, baseRating, rankTier, leaderboardRank, ratingSource } = entry;
+    const { accountId, name, games, baseRating, rankTier, stratzRankTier, leaderboardRank, ratingSource } = entry;
     const inhouseRating = inhouse.get(entry);
     const weight = baseRating === null ? 0 : inhouseWeight(games, model);
     return {
@@ -207,6 +228,7 @@ export function buildLeagueRoster(snapshot, manualMmr = {}, model = DEFAULT_MODE
       inhouseRating,
       inhouseWeight: weight,
       rankTier,
+      stratzRankTier,
       leaderboardRank,
       ratingSource,
       rating: baseRating === null ? null : baseRating + weight * (inhouseRating - baseRating),

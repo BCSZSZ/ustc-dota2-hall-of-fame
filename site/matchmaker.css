@@ -889,6 +889,20 @@
   line-height: 1.4;
 }
 
+.bp-hero.contested {
+  background: #fff3d6;
+}
+
+.bp-contested {
+  margin-inline-start: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #fff7df;
+  font-size: 0.66rem;
+  vertical-align: 1px;
+  background: #b06a00;
+}
+
 .bp-score {
   color: var(--red-900);
   font-size: 0.85rem;

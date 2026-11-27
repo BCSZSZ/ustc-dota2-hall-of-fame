@@ -1,5 +1,5 @@
-import { heroPool, metaEdge, suggestBp } from "./bp-model.js?v=2";
-import { POSITION_NAMES, rateLeague, teamLineup } from "./matchmaker-model.js?v=9";
+import { heroPool, metaEdge, overallEdge, suggestBp } from "./bp-model.js?v=3";
+import { POSITION_NAMES, rateLeague, teamLineup } from "./matchmaker-model.js?v=10";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#bpForm");
@@ -43,12 +43,15 @@ function heroIcon(id) {
   return image;
 }
 
+// The patch numbers behind a hero's edge: STRATZ at the position and OpenDota over all positions.
 function metaText(hero, position) {
   if (metaEdge(heroMeta, hero, position) === null) return "";
   const record = heroMeta?.positions?.[position]?.[hero];
-  if (record) return `版本 ${position} 号位胜率 ${onePercent.format(record[1] / record[0])}（${integer.format(record[0])} 场）`;
-  const [picks, wins] = heroMeta.overall[hero];
-  return `版本胜率 ${onePercent.format(wins / picks)}（${integer.format(picks)} 场，不分号位）`;
+  const overall = overallEdge(heroMeta, hero) === null ? null : heroMeta.overall[hero];
+  const parts = [];
+  if (record) parts.push(`STRATZ ${position} 号位 ${onePercent.format(record[1] / record[0])}（${integer.format(record[0])} 场）`);
+  if (overall) parts.push(`OpenDota 整体 ${onePercent.format(overall[1] / overall[0])}（${integer.format(overall[0])} 场）`);
+  return parts.length ? `版本胜率：${parts.join("，")}` : "";
 }
 
 function chosen(side) {
@@ -125,26 +128,26 @@ function adviceItem(kind, item) {
     if (patch) lines.push(patch);
     if (item.denies) lines.push(`也是 ${item.denies.player.name} 的英雄，先拿下`);
   }
+  if (item.contested) row.classList.add("contested");
   for (const line of lines) reasons.append(make("span", "", line));
   const score = make("em", "bp-score", item.score.toFixed(1));
   score.title = "推荐分（胜率百分点）";
   row.append(heroIcon(item.hero), make("span", "bp-hero-text"), score);
+  if (item.contested) name.append(make("b", "bp-contested", "两边都想要"));
   row.children[1].append(name, reasons);
   return row;
 }
 
-function tierList(title, kind, tiers) {
+function adviceList(title, kind, items) {
   const block = make("div", `bp-tiers bp-${kind}`);
-  block.append(make("h4", "", title));
-  const labels = ["最优先", "次优先"];
-  tiers.forEach((tier, index) => {
-    if (!tier.length) return;
-    block.append(make("p", "bp-tier-label", `${labels[index]}（${tier.length}）`));
-    const list = make("ol", "bp-hero-list");
-    list.append(...tier.map((item) => adviceItem(kind, item)));
-    block.append(list);
-  });
-  if (!tiers.some((tier) => tier.length)) block.append(make("p", "draft-meta", "没有达到推荐分的英雄。"));
+  block.append(make("h4", "", `${title}（${items.length}）`));
+  if (!items.length) {
+    block.append(make("p", "draft-meta", "没有达到推荐分的英雄。"));
+    return block;
+  }
+  const list = make("ol", "bp-hero-list");
+  list.append(...items.map((item) => adviceItem(kind, item)));
+  block.append(list);
   return block;
 }
 
@@ -152,7 +155,7 @@ function adviceColumn(side, own, enemy) {
   const { bans, picks } = suggestBp(own, enemy, heroMeta);
   const column = make("div", `bp-column bp-side-${side}`);
   column.append(make("h3", "bp-column-title", `${teamNames[side]}的立场`),
-    tierList("Ban", "ban", bans), tierList("Pick", "pick", picks));
+    adviceList("优先 Ban", "ban", bans), adviceList("优先 Pick", "pick", picks));
   return column;
 }
 
@@ -162,7 +165,7 @@ function calculate() {
   adviceColumns.replaceChildren(adviceColumn("A", lineups.A, lineups.B), adviceColumn("B", lineups.B, lineups.A));
   const updated = (key) => heroMeta?.[key]?.slice(0, 10) ?? "无";
   metaNote.textContent = heroMeta
-    ? `版本数据：${heroMeta.bracket_label ?? "高分段"}。分号位胜率来自 STRATZ 最近 2 周排位（${updated("positions_updated_utc")} 更新），没有时用 OpenDota 的不分号位胜率（${updated("overall_updated_utc")} 更新）。先看甲队立场，再看乙队立场。`
+    ? `版本数据：${heroMeta.bracket_label ?? "高分段"}，STRATZ 最近 2 周分号位胜率（${updated("positions_updated_utc")} 更新）和 OpenDota 整体胜率（${updated("overall_updated_utc")} 更新）综合。先看甲队立场，再看乙队立场。同一英雄可以同时在 ban 和 pick 里：标“两边都想要”的，先 ban 掉或用一选拿下。`
     : "版本数据读取失败，只按双方的英雄池推荐。";
   poolsSection.hidden = false;
   adviceSection.hidden = false;

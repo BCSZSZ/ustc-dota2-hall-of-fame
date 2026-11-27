@@ -1,8 +1,9 @@
 """Each league player's recent public games by position (site/data/position-stats.json).
 
-OpenDota lists every public match (STRATZ misses some accounts entirely); each match takes STRATZ's position
-when STRATZ has one, otherwise one derived from OpenDota's lane and last hits, which agreed with STRATZ on 96%
-of 537 overlapping league-player matches in 2026-11. The draft tool turns each position's win rate into a
+Both sources' match lists are joined (STRATZ misses some accounts entirely, OpenDota knows few lanes). Each
+match takes STRATZ's position when STRATZ has one, otherwise one derived from OpenDota's lane and last hits,
+which agreed with STRATZ on 96% of 537 overlapping league-player matches in 2026-11; every run records how
+often the two agree. The draft tool turns each position's win rate into a
 per-position rating; positions played fewer than POSITION_MIN_GAMES times (site/matchmaker-model.js) count as
 rarely played.
 """
@@ -110,22 +111,27 @@ def refresh_position_stats(*, data_dir: Path, account_ids: Iterable[int], opendo
                 stratz_games = _stratz_games(stratz, account, oldest)
             except (httpx.HTTPError, ValueError, StratzError) as error:
                 print(f"STRATZ: position history for {account} failed ({error})")
-        kept = stored.get(key)
-        if stratz is not None and stratz_games is None and kept and (kept.get("sources") or {}).get("stratz"):
-            players[key] = kept
+        # A source that failed this run would leave a thinner record: keep the previous one if there is one.
+        if (listed is None or (stratz is not None and stratz_games is None)) and key in stored:
+            players[key] = stored[key]
             failed += 1
             continue
         if listed is None and stratz_games is None:
             failed += 1
-            if key in stored:
-                players[key] = stored[key]
             continue
-        known = {game["id"]: game["position"] for game in stratz_games or []}
+        known = {game["id"]: game for game in stratz_games or []}
+        derived = {game["id"]: game for game in listed or []}
+        compared = agreed = 0
         every = []
-        for game in listed if listed is not None else stratz_games:
-            position = known.get(game["id"]) or game["position"]
+        for match_id in sorted(known.keys() | derived.keys(), key=lambda item: -(known.get(item) or derived[item])["start"]):
+            game = known.get(match_id) or derived[match_id]
+            other = derived.get(match_id, {}).get("position")
+            if match_id in known and other:
+                compared += 1
+                agreed += other == game["position"]
+            position = game["position"] or other
             if position:
-                every.append((game["start"], position, game["won"], game["hero"], game["id"] in known))
+                every.append((game["start"], position, game["won"], game["hero"] or derived.get(match_id, {}).get("hero"), match_id in known))
         games = every[:SAMPLE]
         from_stratz = sum(game[4] for game in games)
         sources = {"stratz": from_stratz, "opendota": len(games) - from_stratz}
@@ -151,6 +157,8 @@ def refresh_position_stats(*, data_dir: Path, account_ids: Iterable[int], opendo
             # The most played heroes in the same games: [hero ID, games, wins].
             "heroes": _top(heroes, TOP_HEROES),
             "sources": sources,
+            # Matches both sources place: [same position, compared].
+            "position_check": [agreed, compared],
             # Every counted game in the window: [games, wins] overall and each position's most played heroes.
             "pool_games": [len(every), sum(game[2] for game in every)],
             "pool": {position: _top(record, POOL_SIZE) for position, record in pool.items()},

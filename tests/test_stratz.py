@@ -4,14 +4,16 @@ from pathlib import Path
 
 import httpx
 
-from stratz import MARKS, PAIRS, minute_features, minute_snapshot, refresh_stratz
+from stratz import MARKS, PAIRS, compare_matches, compare_positions, minute_features, minute_snapshot, refresh_stratz
 
 NOW = datetime(2026, 12, 1, 12, tzinfo=UTC)
 SLOTS = [0, 1, 2, 3, 4, 128, 129, 130, 131, 132]
 
 
 def scored(imp: int | None) -> dict:
-    return {"rank": 71, "winRates": [0.5, 0.183, 0.9], "players": [{"playerSlot": slot, "imp": imp} for slot in SLOTS]}
+    return {"rank": 71, "winRates": [0.5, 0.183, 0.9], "didRadiantWin": True,
+            "players": [{"playerSlot": slot, "imp": imp, "heroId": index + 1, "steamAccountId": 100 + index,
+                         "position": f"POSITION_{index % 5 + 1}"} for index, slot in enumerate(SLOTS)]}
 
 
 def client(matches: dict[int, dict], calls: list) -> httpx.Client:
@@ -34,7 +36,8 @@ def test_scored_matches_are_stored_and_unscored_ones_wait(tmp_path: Path) -> Non
 
     assert result == {"scored": 1, "fetched": 2, "waiting": 1, "per_minute": 0}
     assert read(tmp_path, "stratz.json")["matches"]["1"] == {
-        "rank": 71, "imp": {str(slot): 20 for slot in SLOTS}, "win": [50, 18, 90]}
+        "rank": 71, "imp": {str(slot): 20 for slot in SLOTS}, "win": [50, 18, 90], "radiant_win": True,
+        "players": {str(slot): [index + 1, 100 + index, index % 5 + 1] for index, slot in enumerate(SLOTS)}}
     pending = read(tmp_path, "pending.json")["stratz"]["2"]
     assert pending["attempts"] == 1 and pending["next_check_utc"] == (NOW + timedelta(hours=1)).isoformat()
     # The unscored match asks STRATZ to download its replay again, once.
@@ -112,3 +115,27 @@ def test_snapshot_is_fetched_even_when_the_imp_check_is_not_due(tmp_path: Path) 
     calls.clear()
     refresh_stratz(data_dir=tmp_path, match_ids=[2], http=client({2: with_minutes(None)}, calls), now=NOW + timedelta(minutes=40))
     assert calls == []
+
+
+def test_matches_stored_without_cross_check_fields_are_fetched_once_more(tmp_path: Path) -> None:
+    (tmp_path / "stratz.json").write_text(json.dumps({"matches": {"1": {"rank": 70, "imp": {}, "win": []}}}), encoding="utf-8")
+    calls: list = []
+    refresh_stratz(data_dir=tmp_path, match_ids=[1], http=client({1: scored(5)}, calls), now=NOW)
+    assert read(tmp_path, "stratz.json")["matches"]["1"]["radiant_win"] is True
+    refresh_stratz(data_dir=tmp_path, match_ids=[1], http=client({}, calls), now=NOW)
+    assert len(calls) == 1
+
+
+def test_compares_results_heroes_and_accounts_with_opendota() -> None:
+    stored = {"1": {"radiant_win": False, "players": {"0": [5, 100, 1], "128": [7, 200, 1]}}, "2": {"imp": {}}}
+    matches = [{"match_id": 1, "radiant_win": True, "players": [
+        {"player_slot": 0, "hero_id": 5, "account_id": 100}, {"player_slot": 128, "hero_id": 8, "account_id": 201}]},
+        {"match_id": 2, "radiant_win": True, "players": []}]
+    assert compare_matches(matches, stored) == ["1: result differs", "1 slot 128: hero 8 vs 7", "1 slot 128: account 201 vs 200"]
+
+
+def test_compares_positions_with_corrections_applied() -> None:
+    summaries = [{"match_id": 1, "players": [{"slot": 0, "pos": 1}, {"slot": 1, "pos": 2}, {"slot": 2, "pos": 3}]}]
+    stored = {"1": {"players": {"0": [1, 1, 1], "1": [2, 2, 4], "2": [3, 3, 5]}}}
+    corrections = {"1": {"2": {"pos": 5, "source": "manual"}}}
+    assert compare_positions(summaries, corrections, stored) == ["1 slot 1: position 2 vs STRATZ 4"]
