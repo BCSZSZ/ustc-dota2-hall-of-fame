@@ -1385,9 +1385,9 @@
   width: 100%;
 }
 
-/* As wide as the page allows while the whole square map still fits in the window height. */
+/* As wide as the page allows, up to 90% of what still fits the whole square map in the window height. */
 .match-map .map-stage {
-  width: min(100%, calc(100svh - 24px));
+  width: min(100%, calc((100svh - 24px) * 0.9));
 }
 
 .map-canvas {
