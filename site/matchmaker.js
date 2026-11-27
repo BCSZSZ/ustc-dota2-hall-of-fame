@@ -58,14 +58,14 @@ function captainIds() {
 }
 
 function ratingSource(player) {
-  if (player.ratingSource === "manual") return "手填天梯分";
-  return player.ratingSource === "medal" ? "段位估分" : "中位数暂估";
+  if (player.ratingSource === "manual") return "手填 MMR";
+  return player.ratingSource === "medal" ? "段位估算" : "中位数暂估";
 }
 
 function scoreDetails(player) {
   const medal = describeMedals(player.rankTier, player.leaderboardRank, player.stratzRankTier);
-  const source = player.ratingSource === "medal" ? medal + "估分" : ratingSource(player);
-  return source + " " + integer.format(player.baseRating) +
+  const source = player.ratingSource === "medal" ? medal + " 估算" : ratingSource(player);
+  return "基础 MMR " + integer.format(player.baseRating) + "（" + source + "）" +
     " · 内战 Elo " + integer.format(player.inhouseRating) +
     "（" + player.games + " 场 · 采纳 " + percent.format(player.inhouseWeight) + "）";
 }
@@ -75,7 +75,7 @@ const chipNotes = { main: "最常打", rare: "少打" };
 // One cell per position: its rating, marked as the most played or a rarely played position.
 function positionStrip(player) {
   const profile = positionProfile(player);
-  if (!profile) return make("small", "pos-strip-empty", "近期公开比赛不足 30 场，各号位都按综合分");
+  if (!profile) return make("small", "pos-strip-empty", "近期常规比赛不足 30 场，各号位都按 MMR");
   const strip = make("div", "pos-strip");
   for (const slot of profile) {
     const chip = make("span", `pos-chip ${slot.tag}`);
@@ -88,10 +88,10 @@ function positionStrip(player) {
 }
 
 function positionDetails(player, slot) {
-  if (!player.positions) return scoreDetails(player) + " · 没有足够的近期公开比赛，不分号位";
+  if (!player.positions) return scoreDetails(player) + " · 没有足够的近期常规比赛，不分号位";
   const record = `近 ${player.positionGames} 场（${player.positionSince} 起）打了 ${slot.games} 场 ${slot.position} 号位，胜 ${slot.wins} 场`;
-  return slot.rare ? `${record} · 少于 ${POSITION_MIN_GAMES} 场，按综合分 ${integer.format(player.rating)} − 500 计`
-    : `${record} · 综合分 ${integer.format(player.rating)}，位置修正 ${slot.delta >= 0 ? "+" : "−"}${integer.format(Math.abs(slot.delta))}`;
+  return slot.rare ? `${record} · 少于 ${POSITION_MIN_GAMES} 场，按 MMR ${integer.format(player.rating)} − 500 计`
+    : `${record} · MMR ${integer.format(player.rating)}，号位修正 ${slot.delta >= 0 ? "+" : "−"}${integer.format(Math.abs(slot.delta))}`;
 }
 
 function heroIcon(id) {
@@ -173,11 +173,11 @@ function playerCard(player, role, slot) {
   name.title = `${player.name}（${player.accountId}）`;
   const medal = describeMedals(player.rankTier, player.leaderboardRank, player.stratzRankTier);
   who.append(name, make("small", "draft-meta",
-    `${player.ratingSource === "manual" ? "手填天梯分" : medal || ratingSource(player)} · 内战 ${player.games} 场`));
+    `${player.ratingSource === "manual" ? "手填 MMR" : medal || ratingSource(player)} · 内战 ${player.games} 场`));
   const score = make("div", "draft-card-score");
   const value = make("strong", "", integer.format(player.rating));
   value.title = scoreDetails(player);
-  score.append(value, make("small", "", "综合分"));
+  score.append(value, make("small", "", "MMR"));
   head.append(who, score);
   card.append(head);
 
@@ -219,7 +219,7 @@ function renderPlayers({ captainA, captainB, others }) {
 
 function renderTeam(label, players, average, teamLineup) {
   const team = make("div", "draft-team");
-  const heading = make("h4", "", `${label} · ${teamLineup ? "阵容分" : "均分"} ${decimal.format(average)}`);
+  const heading = make("h4", "", `${label} · ${teamLineup ? "阵容 MMR" : "平均 MMR"} ${decimal.format(average)}`);
   const list = make("ul", "draft-team-players");
   if (teamLineup) {
     for (const slot of teamLineup) {
@@ -318,10 +318,10 @@ function renderPick({ captainA, captainB, others }) {
     firstPick: side, scale: calibration.applied.scale, positions: Boolean(positionStats),
   });
   const slotOf = (player, pickSide) => (pickSide === "A" ? result.lineupA : result.lineupB)?.find((entry) => entry.player === player);
-  pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序。双方都预判对方的选法，每一手都取推演到选完后对本方最好的人；卡片上是这个人选完后打的号位和该号位估分。` +
-    (positionStats ? "" : "位置数据读取失败，按均分计算。");
+  pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序。双方都预判对方的选法，每一手都取推演到选完后对本方最好的人；卡片上是这个人选完后打的号位和号位 MMR。` +
+    (positionStats ? "" : "位置数据读取失败，按平均 MMR 计算。");
   const scores = make("p", "draft-meta draft-pick-scores",
-    `选完后阵容分：甲队 ${decimal.format(result.averageA)} · 乙队 ${decimal.format(result.averageB)}`);
+    `选完后阵容 MMR：甲队 ${decimal.format(result.averageA)} · 乙队 ${decimal.format(result.averageB)}`);
   pickForecast.replaceChildren(...forecast(result.winChanceA), scores, bpLink(result.teamA, result.teamB, "按这个选马结果做 BP →"));
 
   pickCaptains.replaceChildren(playerCard(captainA, "A", slotOf(captainA, "A")), playerCard(captainB, "B", slotOf(captainB, "B")));
@@ -400,7 +400,7 @@ async function refreshSharedScores() {
     return "";
   } catch (error) {
     console.error("Could not read shared MMR", error);
-    return sharedState ? "共享分读取失败，暂用本页已载入的分数。" : "共享分读取失败，暂用段位估分。";
+    return sharedState ? "共享 MMR 读取失败，暂用本页已载入的 MMR。" : "共享 MMR 读取失败，暂用段位估算。";
   }
 }
 
@@ -446,9 +446,9 @@ function renderRoster(sharedStatus) {
 
   const manualCount = roster.filter((player) => player.ratingSource === "manual").length;
   inputs.disabled = roster.length < 10;
-  const status = inputs.disabled ? "可评分玩家不足 10 人，请补充天梯分。" :
-    roster.length + " 名可选玩家 · " + manualCount + " 人已填写天梯分 · " +
-    (positionStats ? `位置数据 ${positionStats.generated_at_utc.slice(0, 10)} 更新` : "位置数据读取失败，按均分计算");
+  const status = inputs.disabled ? "有 MMR 的玩家不足 10 人，请补充手填 MMR。" :
+    roster.length + " 名可选玩家 · " + manualCount + " 人手填了 MMR · " +
+    (positionStats ? `位置数据 ${positionStats.generated_at_utc.slice(0, 10)} 更新` : "位置数据读取失败，按平均 MMR 计算");
   dataStatus.textContent = sharedStatus ? status + " · " + sharedStatus : status;
   renderPool();
 }

@@ -41,7 +41,7 @@ const FIELDS = {
       return { valid: /^[0-9]{0,5}$/.test(value), value: value === "" ? null : Number(value) };
     },
     label: (mmr) => mmr === null ? "未填写" : integer.format(mmr),
-    invalid: "请输入 0–99999 的整数，或留空使用估分。",
+    invalid: "请输入 0–99999 的整数，或留空使用段位估算。",
   },
 };
 const KINDS = Object.keys(FIELDS);
@@ -74,7 +74,7 @@ function applyState(state, drafts = {}) {
   }
   current = state;
   aliasNotice.hidden = aliasesSupported(state);
-  rosterStatus.textContent = entries.size + " 名玩家 · " + count("mmr") + " 人填了天梯分" +
+  rosterStatus.textContent = entries.size + " 名玩家 · " + count("mmr") + " 人手填了 MMR" +
     (aliasesSupported(state) ? " · " + count("alias") + " 人填了称呼" : "");
   filterPlayers();
 }
@@ -148,7 +148,7 @@ function buildRow(player) {
   const alias = makeField("alias", player, { maxLength: MAX_ALIAS_CHARS * 2 });
   alias.field.setAttribute("aria-label", who + "的称呼");
   const mmr = makeField("mmr", player, { inputMode: "numeric" });
-  mmr.field.setAttribute("aria-label", who + "的天梯 MMR");
+  mmr.field.setAttribute("aria-label", who + "的手填 MMR");
   row.append(identity, rank, alias.entry, mmr.entry);
   entries.set(player.accountId, { row, alias, mmr, haystack: player.name + " " + player.accountId });
   return row;
@@ -188,7 +188,7 @@ form.addEventListener("submit", async (event) => {
     if (result.conflict && stillPending) {
       report("已读取其他访客的更新。你的修改还在，请核对后再保存。", true);
     } else {
-      report("已保存。刷新页面即可看到新称呼，选马工具会读取最新天梯分。");
+      report("已保存。刷新页面即可看到新称呼，选马工具会读取最新 MMR。");
     }
   } catch (error) {
     report("未能确认保存结果。改动仍在，请稍后重试。", true);

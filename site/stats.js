@@ -4,7 +4,7 @@ import {
   MIN_RATE_GAMES, average, averageDims, bindRange, comebackTag, el, estimateTag, formatDate, formatDuration, hero, heroIcon, heroLabel, item, itemLabel, kda,
   loadData, matchHref, minutes, percent, playerHref, playerName, playerSummary, rangeParams, rate, record, section, smoothed,
   sortableTable, state, statCard, teamPanel, visibleMatches, won,
-} from "./stats-core.js?v=21";
+} from "./stats-core.js?v=22";
 
 function renderMatches(panel, matches) {
   panel.append(section("比赛", `共 ${matches.length} 场。卡片显示每位选手的英雄、号位、装备、评分（由 STRATZ IMP 换算的百分制）、评级和本局称号，悬停称号或评级可看判定条件；胜方胜率曾跌到 20% 以下的比赛标“翻盘”，IMP 为本站估算的比赛标“估算”；点“详情”打开这场比赛的页面，查看 BP、完整数据、出装时间、经济曲线、地图和死亡复盘。`));
@@ -152,7 +152,7 @@ function renderPlayers(panel, matches) {
   const roster = [...byPlayer.entries()].sort((a, b) =>
     b[1].length - a[1].length || playerName(a[0]).localeCompare(playerName(b[0]), "zh-CN"));
   panel.append(recordWall(matches));
-  panel.append(section("选手", `全部 ${roster.length} 名选手，含还没打过联赛的；战绩、评分、能力和号位柱子只统计所选时间内的联赛比赛。评分由 STRATZ 的 IMP 换算成百分制：IMP 与同段位、同英雄、同号位的玩家比较，0 为平均；联赛 IMP 接近标准差约 20 的正态分布：低于平均时评分 = 10 + 100 × Φ(IMP ÷ 30)，扣分放缓，最低约 10 分；IMP 为 0 时 60 分；高于平均时评分 = 60 + 80 × (Φ(IMP ÷ 20) − 0.5)，中段拉开、顶端逐渐逼近 100。评级 S ≥ 92、A ≥ 80、B ≥ 60、C ≥ 40，其余为 D。MVP 是胜方评分最高的人，达到 95（IMP +30）为 SMVP。STRATZ 不给 IMP 的比赛（有凯的比赛一律不评）用本站模型估算 IMP，比赛时长旁标“估算”。卡片底部汇总所选时间内获得的全部称号。雷达图和能力条是六项能力的 OpenDota 同英雄百分位，只描述打法风格，核心和辅助看的数据不同（悬停能力名可看具体口径），虚线、竖线为联赛平均。号位柱子高度为场次，金色部分为胜场，号位为 OpenDota 根据录像的估计。每个号位顶部的小格是天梯位置分：最近 100 场公开比赛按号位胜率换算的估分（不随上面的时间范围变化），红底为打得最多的号位，虚线灰格为少于 10 场、按综合分减 500 计；名字下的标签是打得最多的号位。点卡片打开选手页，查看对线、死亡、场均数据、英雄池和比赛记录。`));
+  panel.append(section("选手", `全部 ${roster.length} 名选手，含还没打过联赛的；战绩、评分、能力和号位柱子只统计所选时间内的联赛比赛。评分由 STRATZ 的 IMP 换算成百分制：IMP 与同段位、同英雄、同号位的玩家比较，0 为平均；联赛 IMP 接近标准差约 20 的正态分布：低于平均时评分 = 10 + 100 × Φ(IMP ÷ 30)，扣分放缓，最低约 10 分；IMP 为 0 时 60 分；高于平均时评分 = 60 + 80 × (Φ(IMP ÷ 20) − 0.5)，中段拉开、顶端逐渐逼近 100。评级 S ≥ 92、A ≥ 80、B ≥ 60、C ≥ 40，其余为 D。MVP 是胜方评分最高的人，达到 95（IMP +30）为 SMVP。STRATZ 不给 IMP 的比赛（有凯的比赛一律不评）用本站模型估算 IMP，比赛时长旁标“估算”。卡片底部汇总所选时间内获得的全部称号。雷达图和能力条是六项能力的 OpenDota 同英雄百分位，只描述打法风格，核心和辅助看的数据不同（悬停能力名可看具体口径），虚线、竖线为联赛平均。号位柱子高度为场次，金色部分为胜场，号位为 OpenDota 根据录像的估计。每个号位顶部的小格是号位 MMR：MMR（手填或段位估算的基础 MMR，加上按联赛胜负的 Elo 修正）再按最近 100 场常规比赛的号位胜率加减（不随上面的时间范围变化），红底为打得最多的号位，虚线灰格为少于 10 场、按 MMR 减 500 计；名字下的标签是打得最多的号位。点卡片打开选手页，查看对线、死亡、场均数据、英雄池和比赛记录。`));
   const leagueDims = averageDims(matches.flatMap((match) => match.players));
   const range = rangeParams();
   const grid = el("div", { class: "player-grid" });

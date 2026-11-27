@@ -93,7 +93,7 @@ function poolColumn(side, lineup) {
     row.append(head);
     const heroes = heroPool(member.record, member.position, heroMeta).filter((entry) => entry.here > 0).slice(0, SIGNATURES);
     const list = make("div", "bp-signatures");
-    if (!heroes.length) list.append(make("small", "draft-meta", member.record ? "这个号位近一年没有公开比赛" : "没有公开比赛数据"));
+    if (!heroes.length) list.append(make("small", "draft-meta", member.record ? "这个号位近一年没有常规比赛" : "没有常规比赛数据"));
     for (const entry of heroes) {
       const item = make("span", `bp-signature${(entry.meta ?? 0) >= STRONG_PATCH ? " strong" : ""}`);
       item.title = `${heroName(entry.hero)}：${member.position} 号位 ${entry.here} 场，胜 ${entry.hereWins} 场。${metaText(entry.hero, member.position)}`;

@@ -425,11 +425,11 @@ const LADDER_NOTES = { main: "最常打", rare: "少打" };
 
 function ladderChip(player, slot) {
   if (!slot) return el("span", {});
-  const record = `近 ${player.positionGames} 场公开比赛（${player.positionSince} 起）打了 ${slot.games} 场 ${slot.position} 号位，胜 ${slot.wins} 场`;
-  const basis = slot.rare ? `少于 10 场，按综合分 ${rounded(player.rating)} − 500 计`
-    : `综合分 ${rounded(player.rating)}，位置修正 ${slot.delta >= 0 ? "+" : "−"}${rounded(Math.abs(slot.delta))}`;
-  return el("span", { class: `pos-chip ${slot.tag}`, title: `${slot.position} 号位天梯估分：${record}；${basis}` },
-    el("small", {}, "天梯分"), el("strong", {}, rounded(slot.rating)), el("em", {}, LADDER_NOTES[slot.tag] ?? `${slot.games} 场`));
+  const record = `近 ${player.positionGames} 场常规比赛（${player.positionSince} 起）打了 ${slot.games} 场 ${slot.position} 号位，胜 ${slot.wins} 场`;
+  const basis = slot.rare ? `少于 10 场，按 MMR ${rounded(player.rating)} − 500 计`
+    : `MMR ${rounded(player.rating)}，号位修正 ${slot.delta >= 0 ? "+" : "−"}${rounded(Math.abs(slot.delta))}`;
+  return el("span", { class: `pos-chip ${slot.tag}`, title: `${slot.position} 号位 MMR：${record}；${basis}` },
+    el("small", {}, "号位 MMR"), el("strong", {}, rounded(slot.rating)), el("em", {}, LADDER_NOTES[slot.tag] ?? `${slot.games} 场`));
 }
 
 function positionChart(games, accountId) {
@@ -512,7 +512,7 @@ function playerSummary(accountId, games, leagueDims) {
     el("span", { class: "pc-identity" },
       el("strong", { class: "pc-name" }, playerName(accountId)),
       main.length ? el("span", { class: "pc-main-positions" }, main.map((slot) =>
-        el("span", { class: "pos-tag", title: `近期公开比赛打得最多的号位（${slot.games} 场）` }, `主打 ${slot.position} 号位 ${POSITION_NAMES[slot.position]}`))) : null,
+        el("span", { class: "pos-tag", title: `近期常规比赛打得最多的号位（${slot.games} 场）` }, `主打 ${slot.position} 号位 ${POSITION_NAMES[slot.position]}`))) : null,
       el("span", { class: "pc-record" }, `${record(wins, games.length)} · ${winText(wins, games.length)}`),
       el("span", { class: "pc-score" },
         el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "", title: IMP_TIP }, scoreText(mean)),

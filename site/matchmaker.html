@@ -19,7 +19,7 @@
       // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
       if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
     </script>
-    <script src="./matchmaker.js?v=17" type="module"></script>
+    <script src="./matchmaker.js?v=18" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">
@@ -39,7 +39,7 @@
       <form class="panel draft-setup" id="draftForm" aria-labelledby="draftSetupTitle">
         <div class="draft-heading">
           <h2 id="draftSetupTitle">选人</h2>
-          <p class="draft-meta" id="draftDataStatus" role="status">正在读取联赛名单和估分……</p>
+          <p class="draft-meta" id="draftDataStatus" role="status">正在读取联赛名单和 MMR……</p>
         </div>
 
         <fieldset id="draftInputs" disabled aria-label="选择参赛玩家">
@@ -96,17 +96,17 @@
         <div class="draft-heading">
           <h2 id="draftPlayersTitle">选手介绍</h2>
         </div>
-        <p class="draft-meta">综合分下面是各号位的天梯估分和最近 100 场公开比赛里最常用的英雄。红底是打得最多的号位，灰色斜纹是少于 10 场的号位。</p>
+        <p class="draft-meta">MMR 下面是各号位的号位 MMR 和最近 100 场常规比赛里最常用的英雄。红底是打得最多的号位，灰色斜纹是少于 10 场的号位。</p>
         <div id="draftPlayerCards" class="draft-cards"></div>
       </section>
 
       <details class="draft-rules">
-        <summary>评分与筛选规则</summary>
-        <p>基准分优先使用手填天梯 MMR，其次取 OpenDota 最近有效段位的分段中点。冠绝一世在区域排行榜前 5000 名时按名次粗估：第 1 名 9500、第 5000 名 6200，中间按名次的对数插值（例如第 300 名约 7300）；Valve 不公布名次对应的分数，各区也不同，这只是排序用的估计。不在榜上的冠绝一世暂用 6000。没有公开段位时，用联赛段位估分的中位数暂估。</p>
-        <p>内战 Elo 从每个人的基准分起算。综合分按个人有效内战场数采纳 Elo 修正，4 场采纳 10%，12 场 25%，36 场起 50%。</p>
-        <p>预计胜率由两队平均综合分按 Elo 公式计算。超过五套符合 40%–60% 时，保留最接近 50% 的一套，再优先选队员多换边的方案。候选与五五开的偏差最多比严格第 5 名多 1 个百分点。没有任何分法落在 40%–60% 时，列出最接近五五开的 3 套。</p>
-        <p>位置分：每天从 OpenDota 取每人最近的公开比赛，取一年内、普通模式、10 分钟以上、能判断号位的最近 100 场，按号位统计胜率。号位优先用 STRATZ 的判断，STRATZ 没有时按 OpenDota 的分路和每分钟正补推断（与 STRATZ 一致 96%）。某号位胜率先向本人总胜率收缩（加 50 场虚拟比赛），再按 Elo 公式换成相对总胜率的分差，加到综合分上。某号位少于 10 场算“玩的少”，按综合分减 500 计。总场数不足 30 场的玩家不分号位，各号位都按综合分。</p>
-        <p>阵容分：按优先级 2 中单 > 1 核心 > 3 劣势路 > 5 硬辅助 > 4 辅助给号位加权（1.3 / 1.2 / 1.0 / 0.85 / 0.75），在 120 种号位分配里取加权平均最高的一种。自动分配和选马建议都用阵容分算预计胜率；读不到位置数据时退回到均分。</p>
+        <summary>MMR 与筛选规则</summary>
+        <p>基础 MMR 优先使用手填 MMR（游戏里的当前 MMR），其次取 OpenDota 最近有效段位的分段中点。冠绝一世在区域排行榜前 5000 名时按名次粗估：第 1 名 9500、第 5000 名 6200，中间按名次的对数插值（例如第 300 名约 7300）；Valve 不公布名次对应的分数，各区也不同，这只是排序用的估计。不在榜上的冠绝一世暂用 6000。没有公开段位时，用联赛段位估算 MMR 的中位数暂估。</p>
+        <p>内战 Elo 从每个人的基础 MMR 起算，按联赛胜负更新。MMR = 基础 MMR + 按个人有效内战场数采纳的 Elo 修正：4 场采纳 10%，12 场 25%，36 场起 50%。</p>
+        <p>预计胜率由两队平均 MMR 按 Elo 公式计算。超过五套符合 40%–60% 时，保留最接近 50% 的一套，再优先选队员多换边的方案。候选与五五开的偏差最多比严格第 5 名多 1 个百分点。没有任何分法落在 40%–60% 时，列出最接近五五开的 3 套。</p>
+        <p>号位 MMR：每天从 OpenDota 和 STRATZ 取每人最近的常规比赛（天梯和非天梯都算），取一年内、普通模式、10 分钟以上、能判断号位的最近 100 场，按号位统计胜率。号位优先用 STRATZ 的判断，STRATZ 没有时按 OpenDota 的分路和每分钟正补推断（与 STRATZ 一致 96%）。某号位胜率先向本人总胜率收缩（加 50 场虚拟比赛），再按 Elo 公式换成相对总胜率的分差，加到 MMR 上。某号位少于 10 场算“玩的少”，按 MMR 减 500 计。总场数不足 30 场的玩家不分号位，各号位都按 MMR。</p>
+        <p>阵容 MMR：按优先级 2 中单 > 1 核心 > 3 劣势路 > 5 硬辅助 > 4 辅助给号位 MMR 加权（1.3 / 1.2 / 1.0 / 0.85 / 0.75），在 120 种号位分配里取加权平均最高的一种。自动分配和选马建议都用阵容 MMR 算预计胜率；读不到位置数据时退回到平均 MMR。</p>
         <p>选马建议按 1-2-2-2-1 轮流：先选方选 1 匹，后选方选 2 匹，再各 2 匹，最后先选方选 1 匹。双方都知道对方会怎么选：每一手都把之后的选法推演到选完，取对本方最终预计胜率最好的人，所以给出的是双方都按最优应对时的选法。</p>
         <p id="calibrationNote">模型校准：正在读取联赛历史……</p>
       </details>
