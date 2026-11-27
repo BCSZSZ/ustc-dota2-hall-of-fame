@@ -6,12 +6,12 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-27T15:02:36.972994+00:00",
+  "generated_at_utc": "2026-11-27T15:51:35.268351+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
-    "match_ids_returned": 22,
-    "matches_available": 17,
+    "match_ids_returned": 23,
+    "matches_available": 18,
     "season_start_utc": "2026-09-12T15:00:00+00:00",
     "core_roster_seed_end_utc": "2026-11-26T15:00:00+00:00",
     "excluded_before_season": 4,
@@ -77,6 +77,7 @@
   },
   "player_groups": {
     "core": [
+      45998533,
       127811390,
       135794101,
       136619313,
@@ -1291,6 +1292,75 @@
           "personaname": "尔多隆",
           "player_slot": 132,
           "hero_id": 31
+        }
+      ]
+    },
+    {
+      "match_id": 9107659226,
+      "league_id": 19224,
+      "start_time": 1795791565,
+      "duration": 2036,
+      "radiant_win": true,
+      "players": [
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 0,
+          "hero_id": 94
+        },
+        {
+          "account_id": 138814542,
+          "personaname": "坂",
+          "player_slot": 1,
+          "hero_id": 14
+        },
+        {
+          "account_id": 349809744,
+          "personaname": "尔多隆",
+          "player_slot": 2,
+          "hero_id": 104
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 3,
+          "hero_id": 30
+        },
+        {
+          "account_id": 1098196409,
+          "personaname": "玄德",
+          "player_slot": 4,
+          "hero_id": 17
+        },
+        {
+          "account_id": 45998533,
+          "personaname": "Colonel Colt",
+          "player_slot": 128,
+          "hero_id": 31
+        },
+        {
+          "account_id": 1007302804,
+          "personaname": "飞鞋计划",
+          "player_slot": 129,
+          "hero_id": 72
+        },
+        {
+          "account_id": 1068845781,
+          "personaname": "Reisen suki",
+          "player_slot": 130,
+          "hero_id": 58
+        },
+        {
+          "account_id": 182754056,
+          "personaname": "nameless422",
+          "player_slot": 131,
+          "hero_id": 137
+        },
+        {
+          "account_id": 191810399,
+          "personaname": "纯正",
+          "player_slot": 132,
+          "hero_id": 6
         }
       ]
     }
