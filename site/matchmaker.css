@@ -582,6 +582,30 @@
   background: #e8dcc6;
 }
 
+.draft-captain-cards {
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+}
+
+.draft-card-after {
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--red-900);
+  font-size: 0.82rem;
+  font-weight: 800;
+  background: #fae5df;
+}
+
+.captain-B .draft-card-after {
+  color: #205a47;
+  background: #e0efe8;
+}
+
+.draft-card-after.rare {
+  color: #6f6558;
+  background: repeating-linear-gradient(135deg, #ebe4d9 0 4px, #f7f3ec 4px 8px);
+}
+
 /* 选马建议: one row per turn, each pick as a small card in its team's colour. */
 .draft-pick-order {
   display: grid;
@@ -605,10 +629,6 @@
   background: #e0efe8;
 }
 
-.draft-pick-captains {
-  background: #f4ecdd;
-}
-
 .draft-pick-label {
   display: grid;
   flex: 0 0 6.5em;
@@ -627,10 +647,6 @@
 
 .draft-pick-B .draft-pick-label {
   color: #205a47;
-}
-
-.draft-pick-captains .draft-pick-label {
-  color: var(--muted);
 }
 
 .draft-mini {

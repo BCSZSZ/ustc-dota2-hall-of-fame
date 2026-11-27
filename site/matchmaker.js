@@ -15,7 +15,6 @@ const dataStatus = document.querySelector("#draftDataStatus");
 const selectionStatus = document.querySelector("#draftSelection");
 const submit = document.querySelector("#draftSubmit");
 const playersSection = document.querySelector("#draftPlayers");
-const playersTitle = document.querySelector("#draftPlayersTitle");
 const playerCards = document.querySelector("#draftPlayerCards");
 const results = document.querySelector("#draftResults");
 const resultsSummary = document.querySelector("#draftResultsSummary");
@@ -26,8 +25,10 @@ const pickResults = document.querySelector("#pickResults");
 const pickSummary = document.querySelector("#pickSummary");
 const pickForecast = document.querySelector("#pickForecast");
 const pickOrder = document.querySelector("#pickOrder");
+const pickCaptains = document.querySelector("#pickCaptains");
+const pickTitle = document.querySelector("#pickResultsTitle");
 const teamNames = { A: "甲队", B: "乙队" };
-const sections = [playersSection, results, pickResults];
+const sections = [pickResults, results, playersSection];
 
 const memberCount = 8;
 const selected = new Set();
@@ -157,11 +158,13 @@ function invalidatePlans() {
   plans.replaceChildren();
   pickOrder.replaceChildren();
   pickForecast.replaceChildren();
+  pickCaptains.replaceChildren();
 }
 
 // ---------- 参赛选手 ----------
 
-function playerCard(player, role) {
+// `slot`, when given, is the position the player ends up on after the suggested draft.
+function playerCard(player, role, slot) {
   const card = make("article", `draft-card${role ? " captain-" + role : ""}`);
   const head = make("div", "draft-card-head");
   const who = make("div", "draft-card-who");
@@ -197,6 +200,12 @@ function playerCard(player, role) {
       list.append(entry);
     }
     card.append(list);
+  }
+  if (slot) {
+    const after = make("p", `draft-card-after${slot.rare ? " rare" : ""}`,
+      `选完后打 ${slot.position} 号位 ${POSITION_NAMES[slot.position]} · ${integer.format(slot.rating)}${slot.rare ? " · 少打" : ""}`);
+    after.title = positionDetails(player, slot);
+    card.append(after);
   }
   return card;
 }
@@ -307,14 +316,13 @@ function renderPick({ captainA, captainB, others }) {
     `选完后阵容分：甲队 ${decimal.format(result.averageA)} · 乙队 ${decimal.format(result.averageB)}`);
   pickForecast.replaceChildren(...forecast(result.winChanceA), scores);
 
-  const captains = make("li", "draft-pick-turn draft-pick-captains");
-  captains.append(turnLabel("队长", "甲队 · 乙队"), pickCard(captainA, slotOf(captainA, "A"), "A"), pickCard(captainB, slotOf(captainB, "B"), "B"));
+  pickCaptains.replaceChildren(playerCard(captainA, "A", slotOf(captainA, "A")), playerCard(captainB, "B", slotOf(captainB, "B")));
   const turns = [];
   for (const { turn, side: pickSide, player } of result.picks) {
     turns[turn] ??= { side: pickSide, players: [] };
     turns[turn].players.push(player);
   }
-  pickOrder.replaceChildren(captains, ...turns.map(({ side: pickSide, players }, turn) => {
+  pickOrder.replaceChildren(...turns.map(({ side: pickSide, players }, turn) => {
     const item = make("li", `draft-pick-turn draft-pick-${pickSide}`);
     item.append(turnLabel(`第 ${turn + 1} 轮`, `${teamNames[pickSide]}选 ${players.length} 匹`),
       ...players.map((player) => pickCard(player, slotOf(player, pickSide), pickSide)));
@@ -374,8 +382,8 @@ form.addEventListener("submit", async (event) => {
   renderAuto(lineup);
   renderPick(lineup);
   for (const section of sections) section.hidden = false;
-  playersTitle.focus({ preventScroll: true });
-  playersSection.scrollIntoView({ block: "start" });
+  pickTitle.focus({ preventScroll: true });
+  pickResults.scrollIntoView({ block: "start" });
 });
 
 async function refreshSharedScores() {

@@ -8,7 +8,7 @@
     <title>选马工具 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css?v=20261126-1" />
-    <link rel="stylesheet" href="./matchmaker.css?v=6" />
+    <link rel="stylesheet" href="./matchmaker.css?v=7" />
     <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
     <link rel="modulepreload" href="./matchmaker-model.js?v=8" />
     <link rel="modulepreload" href="./shared-mmr.js?v=4" />
@@ -19,7 +19,7 @@
       // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
       if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
     </script>
-    <script src="./matchmaker.js?v=13" type="module"></script>
+    <script src="./matchmaker.js?v=14" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">
@@ -68,12 +68,19 @@
         </fieldset>
       </form>
 
-      <section class="panel draft-results" id="draftPlayers" aria-labelledby="draftPlayersTitle" hidden>
+      <section class="panel draft-results" id="pickResults" aria-labelledby="pickResultsTitle" hidden>
         <div class="draft-heading">
-          <h2 id="draftPlayersTitle" tabindex="-1">参赛选手</h2>
+          <h2 id="pickResultsTitle" tabindex="-1">选马建议</h2>
+          <div class="draft-first-pick" id="pickOptions" role="radiogroup" aria-label="先选方">
+            <span>先选方</span>
+            <label><input type="radio" name="firstPick" value="A" checked /> 甲队</label>
+            <label><input type="radio" name="firstPick" value="B" /> 乙队</label>
+          </div>
         </div>
-        <p class="draft-meta">综合分下面是各号位的天梯估分和最近 100 场公开比赛里最常用的英雄。红底是打得最多的号位，灰色斜纹是少于 10 场的号位。</p>
-        <div id="draftPlayerCards" class="draft-cards"></div>
+        <p class="draft-meta" id="pickSummary"></p>
+        <div id="pickForecast"></div>
+        <div id="pickCaptains" class="draft-cards draft-captain-cards"></div>
+        <ol class="draft-pick-order" id="pickOrder"></ol>
       </section>
 
       <section class="panel draft-results" id="draftResults" aria-labelledby="draftResultsTitle" hidden>
@@ -84,18 +91,12 @@
         <div id="draftPlans" class="draft-plans"></div>
       </section>
 
-      <section class="panel draft-results" id="pickResults" aria-labelledby="pickResultsTitle" hidden>
+      <section class="panel draft-results" id="draftPlayers" aria-labelledby="draftPlayersTitle" hidden>
         <div class="draft-heading">
-          <h2 id="pickResultsTitle">选马建议</h2>
-          <div class="draft-first-pick" id="pickOptions" role="radiogroup" aria-label="先选方">
-            <span>先选方</span>
-            <label><input type="radio" name="firstPick" value="A" checked /> 甲队</label>
-            <label><input type="radio" name="firstPick" value="B" /> 乙队</label>
-          </div>
+          <h2 id="draftPlayersTitle">选手介绍</h2>
         </div>
-        <p class="draft-meta" id="pickSummary"></p>
-        <div id="pickForecast"></div>
-        <ol class="draft-pick-order" id="pickOrder"></ol>
+        <p class="draft-meta">综合分下面是各号位的天梯估分和最近 100 场公开比赛里最常用的英雄。红底是打得最多的号位，灰色斜纹是少于 10 场的号位。</p>
+        <div id="draftPlayerCards" class="draft-cards"></div>
       </section>
 
       <details class="draft-rules">
