@@ -139,3 +139,18 @@ def test_compares_positions_with_corrections_applied() -> None:
     stored = {"1": {"players": {"0": [1, 1, 1], "1": [2, 2, 4], "2": [3, 3, 5]}}}
     corrections = {"1": {"2": {"pos": 5, "source": "manual"}}}
     assert compare_positions(summaries, corrections, stored) == ["1 slot 1: position 2 vs STRATZ 4"]
+
+
+def test_ip_limit_waits_once_then_reports_the_message() -> None:
+    import pytest
+    from stratz import StratzError, post_graphql
+    replies = [httpx.Response(403, text="... One of your IP Addresses frees up in 3 minutes, at ..."),
+               httpx.Response(200, json={"data": {"ok": 1}}),
+               httpx.Response(403, text="... One of your IP Addresses frees up in 3 minutes, at ...")]
+    http = httpx.Client(transport=httpx.MockTransport(lambda request: replies.pop(0)))
+    slept: list = []
+    assert post_graphql(http, "{ ok }", sleep=slept.append) == {"ok": 1}
+    assert slept == [210.0]
+    with pytest.raises(StratzError, match="frees up in 3 minutes"):
+        post_graphql(http, "{ ok }", sleep=slept.append)
+    assert slept == [210.0]

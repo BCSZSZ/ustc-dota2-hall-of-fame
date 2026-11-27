@@ -61,6 +61,8 @@ def post_graphql(http: httpx.Client, query: str, variables: dict[str, Any] | Non
             print(f"STRATZ: IP address limit, waiting {limit[1]} minutes for a free slot")
             sleep((int(limit[1]) + 0.5) * 60)
             continue
+        if limit:
+            raise StratzError(f"IP address limit: {response.text.strip()[:160]}")
         response.raise_for_status()
         payload = response.json()
         if payload.get("errors"):
