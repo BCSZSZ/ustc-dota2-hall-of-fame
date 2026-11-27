@@ -1,7 +1,7 @@
 // Data, scoring and components shared by the stats list, match and player pages.
 
 import { estimateImp } from "./imp-model.js?v=4";
-import { POSITION_NAMES, positionProfile, rateLeague } from "./matchmaker-model.js?v=8";
+import { POSITION_NAMES, positionProfile, rateLeague } from "./matchmaker-model.js?v=9";
 import { loadPlayerAliases, loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const DAY_SECONDS = 86400;

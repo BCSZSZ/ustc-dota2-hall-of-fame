@@ -1,7 +1,7 @@
 import {
   attachPositionRatings, buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams,
   POSITION_MIN_GAMES, POSITION_NAMES, positionProfile, suggestPickOrder,
-} from "./matchmaker-model.js?v=8";
+} from "./matchmaker-model.js?v=9";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#draftForm");
@@ -267,13 +267,21 @@ function forecast(winChanceA) {
   return [line, bar];
 }
 
+// Opens the BP page with these two teams filled in.
+function bpLink(teamA, teamB, text) {
+  const link = make("a", "draft-link", text);
+  const ids = (team) => team.map((player) => player.accountId).join(",");
+  link.href = `./bp.html?${new URLSearchParams({ a: ids(teamA), b: ids(teamB) })}`;
+  return link;
+}
+
 function renderPlan(plan, index) {
   const card = make("article", "draft-plan");
   const heading = make("div", "draft-plan-heading");
   heading.append(make("h3", "", `方案 ${index + 1}`), make("span", "draft-gap", `分差 ${decimal.format(plan.ratingGap)}`));
   const teams = make("div", "draft-teams");
   teams.append(renderTeam("甲队", plan.teamA, plan.averageA, plan.lineupA), renderTeam("乙队", plan.teamB, plan.averageB, plan.lineupB));
-  card.append(heading, ...forecast(plan.winChanceA), teams);
+  card.append(heading, ...forecast(plan.winChanceA), teams, bpLink(plan.teamA, plan.teamB, "用这个分队做 BP →"));
   return card;
 }
 
@@ -314,7 +322,7 @@ function renderPick({ captainA, captainB, others }) {
     (positionStats ? "" : "位置数据读取失败，按均分计算。");
   const scores = make("p", "draft-meta draft-pick-scores",
     `选完后阵容分：甲队 ${decimal.format(result.averageA)} · 乙队 ${decimal.format(result.averageB)}`);
-  pickForecast.replaceChildren(...forecast(result.winChanceA), scores);
+  pickForecast.replaceChildren(...forecast(result.winChanceA), scores, bpLink(result.teamA, result.teamB, "按这个选马结果做 BP →"));
 
   pickCaptains.replaceChildren(playerCard(captainA, "A", slotOf(captainA, "A")), playerCard(captainB, "B", slotOf(captainB, "B")));
   const turns = [];

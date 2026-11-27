@@ -12,6 +12,7 @@ on:
       - "replays.py"
       - "stratz.py"
       - "position_stats.py"
+      - "hero_meta.py"
       - "replay_events.py"
       - "hero_names_zh.json"
       - "mmr-api/**"

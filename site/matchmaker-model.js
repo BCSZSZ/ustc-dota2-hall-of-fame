@@ -382,6 +382,11 @@ function bestLineup(team) {
   return { score: best.score / WEIGHT_TOTAL, lineup };
 }
 
+// The five players' positions under the best weighted lineup, ordered 1 to 5.
+export function teamLineup(team) {
+  return bestLineup(team).lineup;
+}
+
 function describeTeams(teamA, teamB, scale, positions) {
   const lineupA = positions ? bestLineup(teamA) : null;
   const lineupB = positions ? bestLineup(teamB) : null;

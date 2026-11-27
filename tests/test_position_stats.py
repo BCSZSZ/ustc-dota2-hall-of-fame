@@ -71,7 +71,8 @@ def test_lists_opendota_games_and_prefers_stratz_positions(tmp_path: Path) -> No
     assert calls == [(7, 0)]
     assert read(tmp_path)["7"] == {"games": 4, "since": "2026-11-25", "sources": {"stratz": 2, "opendota": 2},
                                    "positions": {"1": [0, 0], "2": [2, 1], "3": [1, 0], "4": [1, 1], "5": [0, 0]},
-                                   "heroes": [[9, 2, 1], [7, 1, 1], [5, 1, 0]]}
+                                   "heroes": [[9, 2, 1], [7, 1, 1], [5, 1, 0]], "pool_games": [4, 2],
+                                   "pool": {"1": [], "2": [[9, 2, 1]], "3": [[5, 1, 0]], "4": [[7, 1, 1]], "5": []}}
 
 
 def test_falls_back_to_one_source_and_keeps_the_previous_record(tmp_path: Path) -> None:
@@ -84,5 +85,6 @@ def test_falls_back_to_one_source_and_keeps_the_previous_record(tmp_path: Path) 
     players = read(tmp_path)
     assert result == {"players": 3, "failed": 1}
     assert players["7"]["positions"]["2"] == [SAMPLE, SAMPLE // 2]
+    assert players["7"]["pool_games"] == [SAMPLE + 30, (SAMPLE + 30) // 2] and players["7"]["pool"]["2"] == [[1, SAMPLE + 30, (SAMPLE + 30) // 2]]
     assert players["8"]["positions"]["5"] == [1, 1] and players["8"]["sources"] == {"stratz": 1, "opendota": 0}
     assert players["9"]["positions"]["2"] == [1, 1]

@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 
 from match_details import _read, ensure_images, refresh_match_details
 from replays import REPLAY_DIR, archive_all, gh_uploader, plan_downloads, read_manifest, record_archives
+from hero_meta import refresh_hero_meta
 from position_stats import refresh_position_stats
 from stratz import refresh_stratz, stratz_client
 
@@ -576,6 +577,9 @@ def main(argv: list[str] | None = None) -> int:
                     data_dir=data_dir, account_ids=_known_account_ids(payload["matches"]), opendota=client,
                     stratz=stratz_http, now=now, error_type=LeagueCollectionError,
                 )
+                if stratz_http is not None:
+                    meta = refresh_hero_meta(data_dir=data_dir, http=stratz_http, now=now)
+                    print(f"Hero meta: {meta['heroes']} heroes ({'updated' if meta['updated'] else 'kept the previous file'})")
             print(f"Positions: recent games for {positions['players']} players ({positions['failed']} failed)")
     with httpx.Client(timeout=15.0, follow_redirects=True) as cdn:
         images = ensure_images(image_dir=args.output.parent.parent / "img", data_dir=args.output.parent, http=cdn)

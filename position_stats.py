@@ -22,7 +22,7 @@ SAMPLE = 100
 MAX_AGE = timedelta(days=365)
 OPENDOTA_LIMIT = 300
 STRATZ_PAGE = 50
-STRATZ_PAGES = 4
+STRATZ_PAGES = 6
 # Modes played like a normal game; turbo and ability draft are not.
 STRATZ_MODES = {"ALL_PICK_RANKED", "ALL_PICK", "CAPTAINS_MODE", "CAPTAINS_DRAFT", "RANDOM_DRAFT", "SINGLE_DRAFT"}
 OPENDOTA_MODES = {1, 2, 3, 4, 16, 22}
@@ -30,6 +30,8 @@ OPENDOTA_MODES = {1, 2, 3, 4, 16, 22}
 CORE_LAST_HITS_PER_MINUTE = 3.5
 OPENDOTA_FIELDS = ("match_id", "player_slot", "radiant_win", "duration", "game_mode", "start_time", "lane_role", "last_hits", "hero_id")
 TOP_HEROES = 5
+# Each position's hero pool over every counted game in the window (BP suggestions read it).
+POOL_SIZE = 10
 STRATZ_QUERY = """query($a: Long!, $skip: Int!) { player(steamAccountId: $a) {
   matches(request: {take: %d, skip: $skip}) { id startDateTime gameMode durationSeconds
     players(steamAccountId: $a) { isVictory position heroId } } } }""" % STRATZ_PAGE
@@ -86,6 +88,11 @@ def _stratz_games(http: httpx.Client, account: int, oldest: float) -> list[dict[
     return games
 
 
+def _top(heroes: dict[int, list[int]], size: int) -> list[list[int]]:
+    """[hero ID, games, wins] rows, most games first."""
+    return sorted(([hero, *record] for hero, record in heroes.items()), key=lambda row: (-row[1], -row[2], row[0]))[:size]
+
+
 def refresh_position_stats(*, data_dir: Path, account_ids: Iterable[int], opendota: Any, stratz: httpx.Client | None,
                            now: datetime, error_type: type[Exception] = Exception) -> dict[str, int]:
     """Replace each player's position record; a player neither source answers for keeps the previous one."""
@@ -111,32 +118,39 @@ def refresh_position_stats(*, data_dir: Path, account_ids: Iterable[int], opendo
                 players[key] = stored[key]
             continue
         known = {game["id"]: game["position"] for game in stratz_games or []}
-        sources = {"stratz": 0, "opendota": 0}
-        games = []
+        every = []
         for game in listed if listed is not None else stratz_games:
             position = known.get(game["id"]) or game["position"]
-            if not position:
-                continue
-            sources["stratz" if game["id"] in known else "opendota"] += 1
-            games.append((game["start"], position, game["won"], game["hero"]))
-            if len(games) == SAMPLE:
-                break
+            if position:
+                every.append((game["start"], position, game["won"], game["hero"], game["id"] in known))
+        games = every[:SAMPLE]
+        from_stratz = sum(game[4] for game in games)
+        sources = {"stratz": from_stratz, "opendota": len(games) - from_stratz}
         positions = {position: [0, 0] for position in "12345"}
         heroes: dict[int, list[int]] = {}
-        for _, position, won, hero in games:
+        for _, position, won, hero, _ in games:
             positions[position][0] += 1
             positions[position][1] += won
             if isinstance(hero, int) and hero > 0:
                 heroes.setdefault(hero, [0, 0])
                 heroes[hero][0] += 1
                 heroes[hero][1] += won
+        pool: dict[str, dict[int, list[int]]] = {position: {} for position in "12345"}
+        for _, position, won, hero, _ in every:
+            if isinstance(hero, int) and hero > 0:
+                record = pool[position].setdefault(hero, [0, 0])
+                record[0] += 1
+                record[1] += won
         players[key] = {
             "games": len(games),
             "since": datetime.fromtimestamp(min(game[0] for game in games), now.tzinfo).date().isoformat() if games else None,
             "positions": positions,
             # The most played heroes in the same games: [hero ID, games, wins].
-            "heroes": sorted(([hero, *record] for hero, record in heroes.items()), key=lambda row: (-row[1], -row[2], row[0]))[:TOP_HEROES],
+            "heroes": _top(heroes, TOP_HEROES),
             "sources": sources,
+            # Every counted game in the window: [games, wins] overall and each position's most played heroes.
+            "pool_games": [len(every), sum(game[2] for game in every)],
+            "pool": {position: _top(record, POOL_SIZE) for position, record in pool.items()},
         }
     _write(data_dir / "position-stats.json", {"schema_version": 1, "generated_at_utc": _iso(now), "sample": SAMPLE, "players": players})
     return {"players": len(players), "failed": failed}
