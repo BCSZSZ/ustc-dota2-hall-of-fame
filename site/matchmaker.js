@@ -318,7 +318,7 @@ function renderPick({ captainA, captainB, others }) {
     firstPick: side, scale: calibration.applied.scale, positions: Boolean(positionStats),
   });
   const slotOf = (player, pickSide) => (pickSide === "A" ? result.lineupA : result.lineupB)?.find((entry) => entry.player === player);
-  pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序。双方都预判对方的选法，每一手都取推演到选完后对本方最好的人；卡片上是这个人选完后打的号位和号位 MMR。` +
+  pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序。双方都预判对方的选法，每一手都取推演到选完后对本方最好的人；卡片上是这个人选完后打的号位和该号位的 MMR。` +
     (positionStats ? "" : "位置数据读取失败，按平均 MMR 计算。");
   const scores = make("p", "draft-meta draft-pick-scores",
     `选完后阵容 MMR：甲队 ${decimal.format(result.averageA)} · 乙队 ${decimal.format(result.averageB)}`);

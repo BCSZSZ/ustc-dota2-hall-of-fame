@@ -429,7 +429,7 @@ function ladderChip(player, slot) {
   const basis = slot.rare ? `少于 10 场，按 MMR ${rounded(player.rating)} − 500 计`
     : `MMR ${rounded(player.rating)}，号位修正 ${slot.delta >= 0 ? "+" : "−"}${rounded(Math.abs(slot.delta))}`;
   return el("span", { class: `pos-chip ${slot.tag}`, title: `${slot.position} 号位 MMR：${record}；${basis}` },
-    el("small", {}, "号位 MMR"), el("strong", {}, rounded(slot.rating)), el("em", {}, LADDER_NOTES[slot.tag] ?? `${slot.games} 场`));
+    el("small", {}, "MMR"), el("strong", {}, rounded(slot.rating)), el("em", {}, LADDER_NOTES[slot.tag] ?? `${slot.games} 场`));
 }
 
 function positionChart(games, accountId) {
