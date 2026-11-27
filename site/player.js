@@ -3,9 +3,9 @@
 import { laneSection } from "./positions.js?v=5";
 import {
   LANE_TEXT, averageDims, averageOf, bindRange, el, formatDate, gamesOf, gradeBadge, hero, heroIcon, heroLabel, item, kda,
-  loadData, matchHref, meanOf, playerName, playerSummary, rate, record, rounded, scoreText, scoreTip, section,
+  loadData, matchHref, meanOf, playerName, playerSummary, publicHeroPool, rate, record, rounded, scoreText, scoreTip, section,
   smoothed, sortableTable, state, statCard, titleChip, visibleMatches,
-} from "./stats-core.js?v=19";
+} from "./stats-core.js?v=20";
 
 function playerDetail(games, matches) {
   const everyone = matches.flatMap((match) => match.players);
@@ -28,7 +28,7 @@ function playerDetail(games, matches) {
       statCard("正补", rounded(averageOf(mine, "lh")), league("lh")),
       statCard("英雄伤害", rounded(averageOf(mine, "hd")), league("hd")),
       statCard("建筑伤害", rounded(averageOf(mine, "td")), league("td")))),
-    section("英雄池", null, sortableTable("playerHeroes", [
+    section("联赛英雄池", null, sortableTable("playerHeroes", [
       { key: "name", label: "英雄", value: (row) => hero(row.id).name, render: (row) => heroLabel(row.id) },
       { key: "games", label: "场次", value: (row) => row.games.length, align: "num" },
       { key: "record", label: "胜负", value: (row) => row.wins - (row.games.length - row.wins), render: (row) => record(row.wins, row.games.length), align: "num" },
@@ -64,8 +64,8 @@ async function load() {
     console.error(error);
     return;
   }
-  if (!accountId || !gamesOf(accountId, state.matches).length) {
-    status.textContent = accountId ? "这名选手没有计入光荣榜的比赛。" : "链接里缺少选手 ID。";
+  if (!accountId || !state.roster.includes(accountId)) {
+    status.textContent = accountId ? "这名选手不在光荣榜名单里。" : "链接里缺少选手 ID。";
     return;
   }
   const page = document.querySelector("#playerPage");
@@ -77,14 +77,14 @@ async function load() {
     const matches = visibleMatches();
     const games = gamesOf(accountId, matches);
     status.textContent = `所选时间内 ${games.length} 场 · 全部 ${gamesOf(accountId, state.matches).length} 场 · 时间为日本时间`;
-    if (!games.length) {
-      page.replaceChildren(el("p", { class: "draft-meta" }, "所选时间内没有这名选手的比赛。"));
-      return;
-    }
-    page.replaceChildren(
+    // The head and the public hero pool show even without league games in the range.
+    page.replaceChildren(...[
       el("div", { class: "player-card open player-page-head" },
         el("div", { class: "player-card-head" }, playerSummary(accountId, games, averageDims(matches.flatMap((match) => match.players))))),
-      playerDetail(games, matches));
+      publicHeroPool(accountId),
+      games.length ? playerDetail(games, matches)
+        : el("p", { class: "draft-meta" }, gamesOf(accountId, state.matches).length ? "所选时间内没有这名选手的联赛比赛。" : "这名选手还没有打过联赛。"),
+    ].filter(Boolean));
   };
   bindRange(state.rerender, { from: params.get("from"), to: params.get("to") });
 }

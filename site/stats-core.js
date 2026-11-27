@@ -19,6 +19,10 @@ const state = {
   sort: {},
   // Each league player's rating per position from recent public games (site/data/position-stats.json).
   ladder: new Map(),
+  // Every league player, including those added before their first league match.
+  roster: [],
+  // Each player's recent public games (site/data/position-stats.json), independent of the time range.
+  publicStats: {},
   // Each page sets this so sortable tables can redraw it.
   rerender: () => {},
 };
@@ -86,6 +90,7 @@ const smoothed = (wins, games) => (wins + 1) / (games + 2);
 const percent = (part, whole) => (whole ? `${Math.round((part / whole) * 100)}%` : "—");
 const average = (values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
 const kda = (rows) => {
+  if (!rows.length) return { text: "—", ratio: 0 };
   const kills = average(rows.map((row) => row.k ?? 0));
   const deaths = average(rows.map((row) => row.d ?? 0));
   const assists = average(rows.map((row) => row.a ?? 0));
@@ -522,6 +527,33 @@ function playerSummary(accountId, games, leagueDims) {
   ];
 }
 
+// Heroes from each position's pool in recent public games; null without public data.
+function publicHeroPool(accountId) {
+  const stats = state.publicStats[accountId];
+  if (!stats?.pool) return null;
+  const heroes = new Map();
+  for (const [position, rows] of Object.entries(stats.pool)) {
+    for (const [id, games, wins] of rows) {
+      const row = heroes.get(id) || { id, games: 0, wins: 0, positions: [] };
+      row.games += games;
+      row.wins += wins;
+      row.positions.push([Number(position), games]);
+      heroes.set(id, row);
+    }
+  }
+  if (!heroes.size) return null;
+  const [total] = stats.pool_games || [0];
+  return section("天梯英雄池", `近一年公开比赛（天梯、普通匹配等，不含快速模式）共 ${total} 场，列出每个号位打得最多的 10 个英雄，不随上面的时间范围变化。号位优先取 STRATZ，没有时按 OpenDota 的分路和补刀推断。`,
+    sortableTable("publicHeroes", [
+      { key: "name", label: "英雄", value: (row) => hero(row.id).name, render: (row) => heroLabel(row.id) },
+      { key: "games", label: "场次", value: (row) => row.games, align: "num" },
+      { key: "record", label: "胜负", value: (row) => row.wins - (row.games - row.wins), render: (row) => record(row.wins, row.games), align: "num" },
+      { key: "rate", label: "胜率", value: (row) => smoothed(row.wins, row.games), render: (row) => rate(row.wins, row.games), align: "num" },
+      { key: "positions", label: "号位", sortable: false, value: () => 0,
+        render: (row) => row.positions.sort((a, b) => b[1] - a[1]).map(([position, games]) => `${position} 号位 ${games}`).join(" · ") },
+    ], [...heroes.values()], "games"));
+}
+
 // ---------- 数据与时间范围 ----------
 
 async function loadData() {
@@ -565,6 +597,11 @@ async function loadData() {
   Object.assign(steamNames, league.player_names || {});
   state.names = { ...steamNames, ...(latestAliases ?? aliases) };
   state.matches = summaries.matches || [];
+  state.publicStats = positionStats?.players || {};
+  state.roster = [...new Set([
+    ...(league.player_groups?.core || []), ...(league.roster_additions || []),
+    ...state.matches.flatMap((match) => match.players.map((player) => player.account_id)),
+  ])].filter((accountId) => Number.isSafeInteger(accountId) && accountId > 0);
   for (const match of state.matches) {
     for (const player of match.players) {
       const fixed = positions[match.match_id]?.[player.slot];
@@ -638,5 +675,5 @@ export {
   matchHref, playerHref, playerLink, formatDate, formatDuration, dateInput, record, rate, smoothed, percent, average,
   kda, sortableTable, section, statCard, visibleMatches, playerRow, teamPanel, meanOf, isMvp, scoreText, scoreTip, impText, gradeBadge, comebackTag, estimateTag,
   gradeOf, titleChip, averageDims, radar, mvpBadge, winText, laneSummary, averageOf, rounded, positionChart,
-  dimensionBars, gamesOf, playerSummary, loadData, rangeParams, bindRange,
+  dimensionBars, gamesOf, playerSummary, publicHeroPool, loadData, rangeParams, bindRange,
 };
