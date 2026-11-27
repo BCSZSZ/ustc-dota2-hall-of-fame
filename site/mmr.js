@@ -1,4 +1,4 @@
-import { buildLeagueRoster, describeRankTier, estimateRankMmr } from "./matchmaker-model.js?v=7";
+import { buildLeagueRoster, describeRankTier, estimateRankMmr } from "./matchmaker-model.js?v=8";
 import { loadSharedMmr, MAX_ALIAS_CHARS, saveSharedMmr, validAlias } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#mmrForm");

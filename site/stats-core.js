@@ -1,7 +1,8 @@
 // Data, scoring and components shared by the stats list, match and player pages.
 
 import { estimateImp } from "./imp-model.js?v=4";
-import { loadPlayerAliases } from "./shared-mmr.js?v=4";
+import { POSITION_NAMES, positionProfile, rateLeague } from "./matchmaker-model.js?v=8";
+import { loadPlayerAliases, loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const DAY_SECONDS = 86400;
 const MIN_RATE_GAMES = 5;
@@ -16,6 +17,8 @@ const state = {
   from: 0,
   to: 0,
   sort: {},
+  // Each league player's rating per position from recent public games (site/data/position-stats.json).
+  ladder: new Map(),
   // Each page sets this so sortable tables can redraw it.
   rerender: () => {},
 };
@@ -413,7 +416,20 @@ function averageOf(rows, key) {
 
 const rounded = (value) => (value === null ? "—" : Math.round(value).toLocaleString());
 
-function positionChart(games) {
+const LADDER_NOTES = { main: "最常打", rare: "少打" };
+
+function ladderChip(player, slot) {
+  if (!slot) return el("span", {});
+  const record = `近 ${player.positionGames} 场公开比赛（${player.positionSince} 起）打了 ${slot.games} 场 ${slot.position} 号位，胜 ${slot.wins} 场`;
+  const basis = slot.rare ? `少于 10 场，按综合分 ${rounded(player.rating)} − 500 计`
+    : `综合分 ${rounded(player.rating)}，位置修正 ${slot.delta >= 0 ? "+" : "−"}${rounded(Math.abs(slot.delta))}`;
+  return el("span", { class: `pos-chip ${slot.tag}`, title: `${slot.position} 号位天梯估分：${record}；${basis}` },
+    el("small", {}, "天梯分"), el("strong", {}, rounded(slot.rating)), el("em", {}, LADDER_NOTES[slot.tag] ?? `${slot.games} 场`));
+}
+
+function positionChart(games, accountId) {
+  const player = state.ladder.get(accountId);
+  const profile = positionProfile(player);
   const rows = [1, 2, 3, 4, 5].map((pos) => {
     const list = games.filter((game) => game.player.pos === pos);
     const heroes = new Map();
@@ -427,8 +443,9 @@ function positionChart(games) {
     return { pos, games: list.length, wins: list.filter((game) => game.won).length, top };
   });
   const peak = Math.max(1, ...rows.map((row) => row.games));
-  return el("div", { class: "pc-positions" }, rows.map((row) =>
+  return el("div", { class: `pc-positions${profile ? " with-ladder" : ""}` }, rows.map((row) =>
     el("div", { class: `pc-position${row.games ? "" : " empty"}` },
+      profile ? ladderChip(player, profile[row.pos - 1]) : null,
       el("span", { class: "pc-count" }, row.games ? `${row.games} 场` : ""),
       el("span", { class: "pc-track" },
         el("span", { class: "pc-bar", style: `height:${(row.games / peak) * 100}%` },
@@ -485,9 +502,12 @@ function playerSummary(accountId, games, leagueDims) {
   const mean = meanOf(scored.map((player) => player.score));
   const lanes = laneSummary(games);
   const dims = averageDims(mine);
+  const main = positionProfile(state.ladder.get(accountId))?.filter((slot) => slot.tag === "main") ?? [];
   return [
     el("span", { class: "pc-identity" },
       el("strong", { class: "pc-name" }, playerName(accountId)),
+      main.length ? el("span", { class: "pc-main-positions" }, main.map((slot) =>
+        el("span", { class: "pos-tag", title: `近期公开比赛打得最多的号位（${slot.games} 场）` }, `主打 ${slot.position} 号位 ${POSITION_NAMES[slot.position]}`))) : null,
       el("span", { class: "pc-record" }, `${record(wins, games.length)} · ${winText(wins, games.length)}`),
       el("span", { class: "pc-score" },
         el("strong", { class: scored.length < MIN_RATE_GAMES ? "small-sample" : "", title: IMP_TIP }, scoreText(mean)),
@@ -497,7 +517,7 @@ function playerSummary(accountId, games, leagueDims) {
       el("span", { class: "pc-meta" }, `GPM ${rounded(averageOf(mine, "gpm"))} · 线优 ${lanes.rated ? winText(lanes.win, lanes.rated) : "—"}`)),
     radar(dims, { size: 150, compare: leagueDims }),
     dimensionBars(dims, leagueDims),
-    positionChart(games),
+    positionChart(games, accountId),
     titleStrip(titleCounts, mine.length),
   ];
 }
@@ -518,12 +538,22 @@ async function loadData() {
     state.names = { ...steamNames, ...aliases };
     state.rerender();
   };
-  const [summaries, names, league, aliases, stratz, positions] = await Promise.all([
+  const [summaries, names, league, aliases, stratz, positions, positionStats] = await Promise.all([
     read("./data/matches.json"), read("./data/names.json"), read("./data/league.json"), loadPlayerAliases(onAliases),
     read("./data/stratz.json").catch(() => ({})),
     // Positions corrected after the replay parse (junglers) or by hand replace OpenDota's estimate everywhere.
     read("./data/positions.json").catch(() => ({})),
+    read("./data/position-stats.json").catch(() => null),
   ]);
+  // Position ratings start from medal estimates and redraw once the shared manual MMRs arrive.
+  const rateLadder = (manual) => {
+    state.ladder = new Map(rateLeague(league, manual, positionStats).map((player) => [player.accountId, player]));
+  };
+  rateLadder({});
+  loadSharedMmr().then((shared) => {
+    rateLadder(shared.ratings);
+    state.rerender();
+  }, (error) => console.error("Could not read shared MMR", error));
   state.heroes = names.heroes || {};
   state.items = names.items || {};
   steamNames = {};

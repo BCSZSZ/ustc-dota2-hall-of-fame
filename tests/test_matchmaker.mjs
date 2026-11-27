@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildLeagueRoster, calibrateModel, DEFAULT_MODEL, describeRankTier, estimateRankMmr, findBalancedTeams, OPTIMAL_STRATEGY, PICK_TURNS, suggestPickOrder,
-  attachPositionRatings, POSITION_WEIGHTS, RARE_POSITION_PENALTY } from "../site/matchmaker-model.js";
+  attachPositionRatings, POSITION_WEIGHTS, RARE_POSITION_PENALTY, positionProfile, rateLeague } from "../site/matchmaker-model.js";
 
 function match(matchId, startTime, radiantWin, firstAccountId = 1) {
   return {
@@ -420,4 +420,19 @@ test("estimates an Immortal's rating from the regional leaderboard place", () =>
   assert.equal(players.get(1).leaderboardRank, 302);
   assert.equal(players.get(2).baseRating, 5520);
   assert.equal(players.get(2).leaderboardRank, null);
+});
+
+test("tags each position as most played, regular or rare", () => {
+  const [player, unknown] = attachPositionRatings(
+    [{ accountId: 1, rating: 4000 }, { accountId: 2, rating: 3000 }],
+    { 1: record([[40, 20], [40, 22], [12, 6], [8, 4]]) },
+  );
+  assert.deepEqual(positionProfile(player).map(({ position, name, tag }) => [position, name, tag]),
+    [["1", "核心", "main"], ["2", "中单", "main"], ["3", "劣势路", "regular"], ["4", "辅助", "rare"], ["5", "硬辅助", "rare"]]);
+  assert.equal(positionProfile(unknown), null);
+
+  const snapshot = { matches: [match(1, 100, true)], opendota_rank_tiers: { 1: 55 } };
+  const rated = rateLeague(snapshot, { 2: 4100 }, { players: { 1: record([[30, 15], [20, 10]]) } });
+  assert.equal(rated.find((entry) => entry.accountId === 2).baseRating, 4100);
+  assert.equal(positionProfile(rated.find((entry) => entry.accountId === 1))[0].tag, "main");
 });

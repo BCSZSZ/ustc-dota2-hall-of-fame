@@ -1,7 +1,7 @@
 import {
   attachPositionRatings, buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams,
-  POSITION_MIN_GAMES, suggestPickOrder,
-} from "./matchmaker-model.js?v=7";
+  POSITION_MIN_GAMES, POSITION_NAMES, positionProfile, suggestPickOrder,
+} from "./matchmaker-model.js?v=8";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#draftForm");
@@ -28,7 +28,6 @@ const pickOrder = document.querySelector("#pickOrder");
 const pickPlan = document.querySelector("#pickPlan");
 const submitLabels = { auto: "计算分队", pick: "生成选马顺序" };
 const teamNames = { A: "甲队", B: "乙队" };
-const positionNames = { 1: "核心", 2: "中单", 3: "劣势路", 4: "辅助", 5: "硬辅助" };
 
 const memberCount = 8;
 const selected = new Set();
@@ -67,12 +66,21 @@ function scoreDetails(player) {
     "（" + player.games + " 场 · 采纳 " + percent.format(player.inhouseWeight) + "）";
 }
 
-function mainPositions(player) {
-  if (!positionStats) return "";
-  if (!player.positions) return " · 位置样本不足";
-  const played = Object.entries(player.positions).filter(([, slot]) => !slot.rare)
-    .sort(([, left], [, right]) => right.games - left.games).map(([position]) => position);
-  return played.length ? ` · 常打 ${played.join("、")} 号位` : " · 各号位都玩的少";
+const chipNotes = { main: "最常打", rare: "少打" };
+
+// One cell per position: its rating, marked as the most played or a rarely played position.
+function positionStrip(player) {
+  const profile = positionProfile(player);
+  if (!profile) return make("small", "pos-strip-empty", "近期公开比赛不足 30 场，各号位都按综合分");
+  const strip = make("span", "pos-strip");
+  for (const slot of profile) {
+    const chip = make("span", `pos-chip ${slot.tag}`);
+    chip.append(make("small", "", `${slot.position} ${slot.name}`), make("strong", "", integer.format(slot.rating)),
+      make("em", "", chipNotes[slot.tag] ?? `${slot.games} 场`));
+    chip.title = positionDetails(player, slot);
+    strip.append(chip);
+  }
+  return strip;
 }
 
 function positionDetails(player, slot) {
@@ -121,11 +129,12 @@ function renderPool() {
     const info = make("span", "draft-player-info");
     const name = make("span", "draft-player-name", player.name);
     name.title = player.name;
-    const account = player.accountId + " · " + ratingSource(player) + mainPositions(player);
+    const account = player.accountId + " · " + ratingSource(player);
     info.append(name, make("small", "draft-player-id", account));
     const rating = make("strong", "draft-player-rating", integer.format(player.rating));
     rating.title = scoreDetails(player);
     label.append(checkbox, info, rating);
+    if (positionStats) label.append(positionStrip(player));
     items.append(label);
   }
   pool.replaceChildren(items);
@@ -151,7 +160,7 @@ function renderTeam(label, players, average, lineup) {
       const row = make("li", "");
       row.dataset.accountId = String(player.accountId);
       const name = make("span", "draft-team-player");
-      name.append(make("small", "draft-position", `${slot.position} ${positionNames[slot.position]}`), player.name);
+      name.append(make("small", "draft-position", `${slot.position} ${POSITION_NAMES[slot.position]}`), player.name);
       if (player === players[0]) name.append(make("small", "draft-role", "队长"));
       if (slot.rare) name.append(make("small", "draft-role draft-rare", "玩的少"));
       else if (!player.positions) name.append(make("small", "draft-role", "不分号位"));

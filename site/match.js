@@ -6,7 +6,7 @@ import { matchMap } from "./map.js?v=4";
 import {
   LANE_TEXT, comebackTag, el, estimateTag, formatDate, formatDuration, gradeBadge, hero, heroIcon, heroLabel, impText, isMvp, isRadiant,
   item, itemIcon, loadData, minutes, mvpBadge, playerLink, scoreText, scoreTip, state, teamPanel,
-} from "./stats-core.js?v=15";
+} from "./stats-core.js?v=16";
 
 const LANES = { top: "上路", mid: "中路", bot: "下路" };
 const RANK_NAMES = { 1: "先锋", 2: "卫士", 3: "中军", 4: "统帅", 5: "传奇", 6: "万古流芳", 7: "超凡入圣", 8: "冠绝一世" };

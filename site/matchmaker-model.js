@@ -342,6 +342,26 @@ export function attachPositionRatings(players, stats) {
   });
 }
 
+export const POSITION_NAMES = Object.freeze({ 1: "核心", 2: "中单", 3: "劣势路", 4: "辅助", 5: "硬辅助" });
+
+// Each position's rating and how often the player plays it: "main" for the most played, "rare" below
+// POSITION_MIN_GAMES, otherwise "regular". Null without position data.
+export function positionProfile(player) {
+  if (!player?.positions) return null;
+  const most = Math.max(...POSITIONS.map((position) => player.positions[position].games));
+  return POSITIONS.map((position) => {
+    const slot = player.positions[position];
+    return { position, name: POSITION_NAMES[position], ...slot, tag: slot.rare ? "rare" : slot.games === most ? "main" : "regular" };
+  });
+}
+
+// The whole league roster with blended ratings and position ratings, for pages that only display them.
+export function rateLeague(snapshot, manualMmr = {}, positionStats = null) {
+  const model = calibrateModel(snapshot, manualMmr).applied;
+  const roster = buildLeagueRoster(snapshot, manualMmr, model).filter((player) => Number.isFinite(player.rating));
+  return attachPositionRatings(roster, positionStats?.players);
+}
+
 const positionRating = (player, position) => player.positions?.[position]?.rating ?? player.rating;
 
 const PERMUTATIONS = (function permute(rest) {

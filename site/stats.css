@@ -765,8 +765,24 @@
   font-size: 0.75rem;
 }
 
-.pc-position.empty {
+.pc-position.empty > :not(.pos-chip) {
   opacity: 0.45;
+}
+
+.pc-positions.with-ladder .pc-position {
+  grid-template-rows: auto auto 56px auto auto auto;
+}
+
+.pc-position .pos-chip {
+  width: 100%;
+  max-width: 78px;
+  margin-bottom: 4px;
+}
+
+.pc-main-positions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .pc-count {
