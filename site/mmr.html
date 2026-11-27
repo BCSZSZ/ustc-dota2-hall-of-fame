@@ -7,17 +7,14 @@
     <meta name="description" content="登记科大 Dota 2 内战玩家的称呼和当前 MMR。" />
     <title>玩家登记 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20261126-1" />
+    <link rel="stylesheet" href="./styles.css?v=20261127-1" />
     <link rel="stylesheet" href="./matchmaker.css?v=9" />
     <link rel="stylesheet" href="./mmr.css?v=2" />
     <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
     <link rel="modulepreload" href="./matchmaker-model.js?v=11" />
     <link rel="modulepreload" href="./shared-mmr.js?v=4" />
     <link rel="preload" href="./data/league.json" as="fetch" crossorigin />
-    <script>
-      // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
-      if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
-    </script>
+    <script src="./refresh.js?v=1" defer></script>
     <script src="./mmr.js?v=16" type="module"></script>
   </head>
   <body class="draft-page">
@@ -27,6 +24,7 @@
           <a class="draft-back" href="./"><span aria-hidden="true">←</span> 科大光荣榜</a>
           <a class="draft-back" href="./matchmaker.html">选马工具 <span aria-hidden="true">→</span></a>
           <a class="draft-back" href="./stats.html">数据 <span aria-hidden="true">→</span></a>
+          <button class="draft-back cache-refresh" type="button" data-hard-refresh title="清空本站在浏览器里的缓存，从服务器重新下载最新的页面和数据">强制刷新</button>
         </nav>
         <h1>玩家登记</h1>
         <p>填好的称呼会显示在光荣榜各页，手填 MMR 公开用于内战分队。所有访客都能编辑，请只更新自己的。</p>

@@ -7,7 +7,7 @@
     <meta name="description" content="科大 Dota 2 内战的 BP 建议：双方绝活英雄，结合版本强势英雄给出 ban 和 pick 建议。" />
     <title>BP 建议 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20261126-1" />
+    <link rel="stylesheet" href="./styles.css?v=20261127-1" />
     <link rel="stylesheet" href="./matchmaker.css?v=9" />
     <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
     <link rel="modulepreload" href="./bp-model.js?v=3" />
@@ -17,10 +17,7 @@
     <link rel="preload" href="./data/position-stats.json" as="fetch" crossorigin />
     <link rel="preload" href="./data/hero-meta.json" as="fetch" crossorigin />
     <link rel="preload" href="./data/names.json" as="fetch" crossorigin />
-    <script>
-      // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
-      if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
-    </script>
+    <script src="./refresh.js?v=1" defer></script>
     <script src="./bp.js?v=5" type="module"></script>
   </head>
   <body class="draft-page">
@@ -30,6 +27,7 @@
           <a class="draft-back" href="./"><span aria-hidden="true">←</span> 科大光荣榜</a>
           <a class="draft-back" href="./matchmaker.html">选马工具 <span aria-hidden="true">→</span></a>
           <a class="draft-back" href="./stats.html">数据 <span aria-hidden="true">→</span></a>
+          <button class="draft-back cache-refresh" type="button" data-hard-refresh title="清空本站在浏览器里的缓存，从服务器重新下载最新的页面和数据">强制刷新</button>
         </nav>
         <h1>BP 建议</h1>
         <p>给两边各选五个人，看双方每个号位的绝活英雄，再分别站在甲队、乙队的立场给出 ban 和 pick 建议。</p>

@@ -7,7 +7,7 @@
     <meta name="description" content="科大 Dota 2 内战选手的对线、死亡、场均数据、英雄池和比赛记录。" />
     <title>选手 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./styles.css?v=20261126-1" />
+    <link rel="stylesheet" href="./styles.css?v=20261127-1" />
     <link rel="stylesheet" href="./matchmaker.css?v=9" />
     <link rel="stylesheet" href="./stats.css?v=39" />
     <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
@@ -25,10 +25,7 @@
     <link rel="preload" href="./data/imp-model.json" as="fetch" crossorigin />
     <link rel="preload" href="./data/positions.json" as="fetch" crossorigin />
     <link rel="preload" href="./data/lanes.json" as="fetch" crossorigin />
-    <script>
-      // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
-      if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
-    </script>
+    <script src="./refresh.js?v=1" defer></script>
     <script src="./player.js?v=31" type="module"></script>
   </head>
   <body class="draft-page">
@@ -39,6 +36,7 @@
           <a class="draft-back" href="./">科大光荣榜</a>
           <a class="draft-back" href="./matchmaker.html">选马工具</a>
           <a class="draft-back" href="./mmr.html">玩家登记</a>
+          <button class="draft-back cache-refresh" type="button" data-hard-refresh title="清空本站在浏览器里的缓存，从服务器重新下载最新的页面和数据">强制刷新</button>
         </nav>
         <h1 id="playerTitle">选手</h1>
         <p>对线、死亡、场均数据、英雄池和比赛记录。数据来自 OpenDota、<a href="https://stratz.com" target="_blank" rel="noopener">STRATZ</a>（IMP，Powered by STRATZ）和本站解析的录像，只含计入光荣榜的比赛。</p>

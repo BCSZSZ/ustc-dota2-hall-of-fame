@@ -46,6 +46,13 @@ button {
   cursor: pointer;
 }
 
+.draft-back.cache-refresh {
+  padding: 0;
+  border: 0;
+  text-decoration: underline;
+  background: none;
+}
+
 .fireworks,
 .fireworks::before,
 .fireworks::after {

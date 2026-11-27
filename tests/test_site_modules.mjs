@@ -37,6 +37,9 @@ test("data preloads match how modules fetch them, so the browser reuses the down
       assert.match(link, /^<link rel="preload" href="\.\/data\/[\w-]+\.json" as="fetch" crossorigin \/>$/, `${page}: ${link}`);
       read(link.match(/href="\.\/([^"]+)"/)[1]);
     }
-    assert.match(html, /navigator\.serviceWorker\?\.register\("\.\/sw\.js"\)/, page);
+    // refresh.js registers the service worker and runs the page's "强制刷新" button.
+    assert.match(html, /<script src="\.\/refresh\.js\?v=\d+" defer><\/script>/, page);
+    assert.match(html, /data-hard-refresh/, page);
   }
+  assert.match(read("refresh.js"), /navigator\.serviceWorker\.register\("\.\/sw\.js"\)/);
 });
