@@ -4,6 +4,9 @@
 
 const MAP_IMAGE = "./img/map/detailed_740.webp";
 export const SIZE = 640;
+// The match page draws the map at full page width, so its canvas uses a finer pixel grid than SIZE.
+const RES = 1440;
+const LANING_SECONDS = 360;
 const WARD_SECONDS = [360, 420];
 const WARD_NAMES = ["假眼", "真眼"];
 const PALETTE = [[0, "rgba(0,0,255,0)"], [0.25, "#2b6cff"], [0.5, "#00e0ff"], [0.65, "#3dff3d"], [0.82, "#ffe600"], [1, "#ff2200"]];
@@ -52,13 +55,15 @@ function heatPalette() {
   return palette;
 }
 
-// Sum seconds per cell for the chosen players and phase, then draw blurred blobs and colour them by density.
-function drawHeat(context, heat, slots, phase) {
+// Sum seconds per cell for the chosen players and time slices, then draw blurred blobs and colour them by density.
+function drawHeat(context, heat, slots, phase, skipLaning) {
   const cells = new Map();
   for (const slot of slots) {
     const flat = heat.players[slot] || [];
     for (let index = 0; index < flat.length; index += 4) {
-      if (phase !== "all" && flat[index] !== phase) continue;
+      const start = flat[index] * heat.phase_seconds;
+      if (phase !== "all" && Math.floor(start / 600) !== phase) continue;
+      if (skipLaning && start < LANING_SECONDS) continue;
       const key = flat[index + 1] * 1000 + flat[index + 2];
       cells.set(key, (cells.get(key) || 0) + flat[index + 3]);
     }
@@ -66,8 +71,9 @@ function drawHeat(context, heat, slots, phase) {
   if (!cells.size) return 0;
   const peak = Math.log1p(Math.max(...cells.values()));
   const layer = document.createElement("canvas");
-  layer.width = layer.height = SIZE;
+  layer.width = layer.height = RES;
   const shadow = layer.getContext("2d");
+  shadow.scale(RES / SIZE, RES / SIZE);
   const step = (heat.bin / 128) * SIZE;
   const radius = step * 1.6;
   for (const [key, seconds] of cells) {
@@ -79,7 +85,7 @@ function drawHeat(context, heat, slots, phase) {
     shadow.fillStyle = gradient;
     shadow.fillRect(px(x) - radius, py(y) - radius, radius * 2, radius * 2);
   }
-  const image = shadow.getImageData(0, 0, SIZE, SIZE);
+  const image = shadow.getImageData(0, 0, RES, RES);
   const colours = heatPalette();
   for (let index = 0; index < image.data.length; index += 4) {
     const alpha = image.data[index + 3];
@@ -91,38 +97,37 @@ function drawHeat(context, heat, slots, phase) {
     image.data[index + 3] = Math.min(230, alpha * 1.6);
   }
   shadow.putImageData(image, 0, 0);
-  context.drawImage(layer, 0, 0);
+  context.drawImage(layer, 0, 0, SIZE, SIZE);
   return [...cells.values()].reduce((sum, seconds) => sum + seconds, 0);
 }
 
-// Colour runs from red (destroyed at once) to green (lived its full time).
-function lifeColour(ward) {
-  const ratio = ward.life === null ? 1 : Math.min(1, ward.life / WARD_SECONDS[ward.kind]);
-  return `hsl(${Math.round(ratio * 120)} 85% 45%)`;
+// Opacity follows how much of its full duration the ward stayed up; 90% or more is fully opaque.
+function lifeAlpha(ward) {
+  const ratio = Math.min(1, ward.shown / WARD_SECONDS[ward.kind] / 0.9);
+  return 0.2 + 0.8 * ratio;
 }
 
+const expired = (ward) => ward.life !== null && !ward.destroyed;
+
 function drawWards(context, wards) {
+  context.font = "11px sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
   for (const ward of wards) {
     const x = px(ward.x);
     const y = py(ward.y);
-    const radius = ward.kind === 0 ? 7 : 5;
-    context.lineWidth = 2;
-    context.strokeStyle = ward.slot < 128 ? "#7dff9a" : "#ff6b5a";
-    context.fillStyle = lifeColour(ward);
+    const radius = ward.kind === 0 ? 6 : 5;
+    context.globalAlpha = lifeAlpha(ward);
+    context.fillStyle = ward.slot < 128 ? "#3ddc6a" : "#ff4b3a";
+    context.strokeStyle = "rgba(255,255,255,0.9)";
+    context.lineWidth = 1.2;
     context.beginPath();
     if (ward.kind === 0) context.arc(x, y, radius, 0, Math.PI * 2);
     else context.rect(x - radius, y - radius, radius * 2, radius * 2);
-    if (ward.life !== null) context.fill();
+    context.fill();
     context.stroke();
-    if (ward.destroyed) {
-      context.strokeStyle = "#111";
-      context.beginPath();
-      context.moveTo(x - 4, y - 4);
-      context.lineTo(x + 4, y + 4);
-      context.moveTo(x + 4, y - 4);
-      context.lineTo(x - 4, y + 4);
-      context.stroke();
-    }
+    context.globalAlpha = 1;
+    if (expired(ward)) context.fillText("✨", x + radius + 3, y - radius - 1);
   }
 }
 
@@ -158,8 +163,8 @@ function wardSummary(match, wards, ui) {
 
 export function matchMap(match, detail, ui) {
   const { el } = ui;
-  const view = { layer: "heat", slots: new Set(match.players.map((player) => String(player.slot))), phase: "all", kinds: new Set([0, 1]) };
-  const canvas = el("canvas", { width: SIZE, height: SIZE, class: "map-canvas", role: "img" });
+  const view = { layer: "heat", slots: new Set(match.players.map((player) => String(player.slot))), phase: "all", skipLaning: false, kinds: new Set([0, 1]) };
+  const canvas = el("canvas", { width: RES, height: RES, class: "map-canvas", role: "img" });
   const tip = el("div", { class: "map-tip", hidden: true });
   const controls = el("div", { class: "map-controls" });
   const note = el("p", { class: "draft-meta map-note" });
@@ -177,8 +182,10 @@ export function matchMap(match, detail, ui) {
   }
 
   function renderControls() {
-    const sides = [["全部", () => true], ["天辉", (player) => player.slot < 128], ["夜魇", (player) => player.slot >= 128]];
-    const phases = heat && fullGame ? Math.floor((heat.duration || 0) / heat.phase_seconds) + 1 : 0;
+    const sides = [["全部", () => true], ["天辉", (player) => player.slot < 128], ["夜魇", (player) => player.slot >= 128], ["取消全选", () => false]];
+    const phases = heat && fullGame ? Math.floor((heat.duration || 0) / 600) + 1 : 0;
+    const canSkipLaning = heat && fullGame && LANING_SECONDS % heat.phase_seconds === 0;
+    if (!canSkipLaning) view.skipLaning = false;
     controls.replaceChildren(...[
       el("div", { class: "map-row" },
         button("英雄活动", view.layer === "heat", () => { view.layer = "heat"; draw(); }),
@@ -204,6 +211,13 @@ export function matchMap(match, detail, ui) {
         ? el("div", { class: "map-row" }, button("整局", view.phase === "all", () => { view.phase = "all"; draw(); }),
           Array.from({ length: phases }, (_, phase) => button(`${phase * 10}–${phase * 10 + 10}′`, view.phase === phase, () => { view.phase = phase; draw(); })))
         : null,
+      view.layer === "heat" && canSkipLaning
+        ? el("label", { class: "map-check" }, el("input", {
+          type: "checkbox",
+          checked: view.skipLaning,
+          onchange: (event) => { view.skipLaning = event.target.checked; draw(); },
+        }), "过滤前 6 分钟（对线期）")
+        : null,
       view.layer === "wards"
         ? el("div", { class: "map-row" }, WARD_NAMES.map((label, kind) => button(label, view.kinds.has(kind), () => {
           if (view.kinds.has(kind)) view.kinds.delete(kind);
@@ -218,6 +232,7 @@ export function matchMap(match, detail, ui) {
     renderControls();
     const image = await loadImage();
     const context = canvas.getContext("2d");
+    context.setTransform(RES / SIZE, 0, 0, RES / SIZE, 0, 0);
     context.clearRect(0, 0, SIZE, SIZE);
     if (image) context.drawImage(image, 0, 0, SIZE, SIZE);
     else {
@@ -227,17 +242,17 @@ export function matchMap(match, detail, ui) {
     summary.replaceChildren();
     if (view.layer === "heat") {
       visible = [];
-      const total = heat ? drawHeat(context, heat, view.slots, view.phase) : 0;
+      const total = heat ? drawHeat(context, heat, view.slots, view.phase, view.skipLaning) : 0;
       canvas.setAttribute("aria-label", "英雄位置热力图");
       note.replaceChildren(fullGame
-        ? `整局位置，来自本站解析的录像，每秒采样一次，只计存活时间。颜色越暖表示停留越久（对数刻度）。当前选择共 ${Math.round(total / 60)} 分钟的位置。`
+        ? `整局位置，来自本站解析的录像，每秒采样一次，只计存活时间。颜色越暖表示停留越久（对数刻度）。当前选择共 ${Math.round(total / 60)} 分钟的位置${view.skipLaning ? "（已去掉前 6 分钟）" : ""}。`
         : "前 10 分钟位置（OpenDota 对线期数据，含开局前 90 秒）。录像下载并解析完成后，这里会自动换成整局热力图。");
       if (!total) note.append(" 当前选择没有位置数据。");
     } else {
       visible = wards.filter((ward) => view.slots.has(String(ward.slot)) && view.kinds.has(ward.kind));
       drawWards(context, visible);
       canvas.setAttribute("aria-label", "眼位分布图");
-      note.replaceChildren("圆点是假眼，方块是真眼；绿边是天辉，红边是夜魇。填色表示存活时间：红色是很快被排，绿色是活满（假眼 6 分钟、真眼 7 分钟）；× 表示被排掉，空心表示比赛结束时还在。悬停查看详情。");
+      note.replaceChildren("圆点是假眼，方块是真眼；绿色是天辉，红色是夜魇。颜色深浅表示存活时间：越淡越早被排，存活超过 90% 时长（假眼 6 分钟、真眼 7 分钟）颜色最深；✨ 表示活到自然消失、没被排掉。悬停查看详情。");
       const table = wardSummary(match, wards, ui);
       if (table) summary.append(table);
       else summary.append(el("p", { class: "draft-meta" }, "这场没有眼位记录。"));

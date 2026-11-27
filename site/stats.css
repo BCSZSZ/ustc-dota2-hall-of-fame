@@ -1382,7 +1382,7 @@
 
 .map-stage {
   position: relative;
-  width: min(100%, 640px);
+  width: 100%;
 }
 
 .map-canvas {
@@ -1408,6 +1408,19 @@
 
 .map-note {
   max-width: 640px;
+}
+
+.match-map .map-note {
+  max-width: none;
+}
+
+.map-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .map-wards tr.radiant td:first-child {

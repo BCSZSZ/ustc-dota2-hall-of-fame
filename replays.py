@@ -15,7 +15,7 @@ from typing import Any, Callable, Iterable, Iterator
 
 import httpx
 
-from match_details import GIVE_UP_AFTER, HEAT_BIN, HEAT_PHASE_SECONDS, Client, _iso, _read, _write, schedule_retry
+from match_details import GIVE_UP_AFTER, HEAT_BIN, Client, _iso, _read, _write, schedule_retry
 from replay_events import REPLAY_VERSION, build_death_index, build_lane_index, death_events, lane_events, level_events
 
 REPO = os.getenv("GITHUB_REPOSITORY") or "BCSZSZ/ustc-dota2-hall-of-fame"
@@ -220,12 +220,16 @@ def _player_slot(index: int) -> int:
     return index if index < 5 else 128 + index - 5
 
 
+# Two-minute slices let the page show 10-minute phases and also skip the laning phase (first 6 minutes).
+HEAT_SLICE_SECONDS = 120
+
+
 def _cell(value: float) -> int:
     return int((value - 64) // HEAT_BIN)
 
 
 def heatmap(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
-    """Seconds each living hero spent in each map cell, per 10-minute phase, from the parser's interval events."""
+    """Seconds each living hero spent in each map cell, per 2-minute slice, from the parser's interval events."""
     counts: Counter[tuple[int, int, int, int]] = Counter()
     last_time = 0
     for entry in entries:
@@ -234,12 +238,12 @@ def heatmap(entries: Iterable[dict[str, Any]]) -> dict[str, Any]:
         time, x, y, slot = entry.get("time"), entry.get("x"), entry.get("y"), entry.get("slot")
         if not isinstance(time, (int, float)) or time < 0 or x is None or y is None or slot is None:
             continue
-        counts[(_player_slot(int(slot)), int(time // HEAT_PHASE_SECONDS), _cell(x), _cell(y))] += 1
+        counts[(_player_slot(int(slot)), int(time // HEAT_SLICE_SECONDS), _cell(x), _cell(y))] += 1
         last_time = max(last_time, int(time))
     players: dict[str, list[int]] = {}
     for (slot, phase, cx, cy), seconds in sorted(counts.items()):
         players.setdefault(str(slot), []).extend((phase, cx, cy, seconds))
-    return {"bin": HEAT_BIN, "phase_seconds": HEAT_PHASE_SECONDS, "duration": last_time, "players": players}
+    return {"bin": HEAT_BIN, "phase_seconds": HEAT_SLICE_SECONDS, "duration": last_time, "players": players}
 
 
 def _parser_entries(replay: Path, parser_url: str) -> Iterator[dict[str, Any]]:
@@ -263,14 +267,15 @@ def _parser_entries(replay: Path, parser_url: str) -> Iterator[dict[str, Any]]:
 
 
 def parse_todo(data_dir: Path, redo: bool = False) -> list[int]:
-    """Counted, archived matches whose heatmap or replay events are missing or from an older REPLAY_VERSION."""
+    """Counted, archived matches whose heatmap or replay events are missing or from an older format."""
     archived = read_manifest(data_dir)
     todo = []
     for match in _read(data_dir / "matches.json").get("matches", []):
         match_id = match["match_id"]
         if str(match_id) not in archived:
             continue
-        current = (data_dir / "heat" / f"{match_id}.json").exists() and (
+        heat = data_dir / "heat" / f"{match_id}.json"
+        current = heat.exists() and _read(heat).get("phase_seconds") == HEAT_SLICE_SECONDS and (
             _read(data_dir / "replay" / f"{match_id}.json").get("v") == REPLAY_VERSION
         )
         if redo or not current:

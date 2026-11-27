@@ -126,7 +126,8 @@ def test_heatmap_counts_living_seconds_per_player_phase_and_cell() -> None:
         {"type": "DOTA_COMBATLOG_DAMAGE", "time": 20, "slot": 0},
     ]
     result = heatmap(entries)
-    assert result["players"] == {"0": [0, 18, 18, 2], "130": [1, 0, 63, 1]}
+    assert result["players"] == {"0": [0, 18, 18, 2], "130": [5, 0, 63, 1]}
+    assert result["phase_seconds"] == 120
     assert result["duration"] == 650
 
 
@@ -156,16 +157,18 @@ def test_detail_pairs_wards_with_their_end_and_names_the_dewarder() -> None:
 
 def test_parse_todo_lists_archived_matches_missing_or_stale_derivations(tmp_path: Path) -> None:
     from replay_events import REPLAY_VERSION
+    from replays import HEAT_SLICE_SECONDS
 
     (tmp_path / "heat").mkdir()
     (tmp_path / "replay").mkdir()
-    (tmp_path / "matches.json").write_text(json.dumps({"matches": [{"match_id": i} for i in (1, 2, 3, 4)]}))
-    (tmp_path / "replays.json").write_text(json.dumps({"replays": {"1": {}, "2": {}, "3": {}}}))
-    for match_id, version in ((1, REPLAY_VERSION), (2, REPLAY_VERSION - 1)):
-        (tmp_path / "heat" / f"{match_id}.json").write_text("{}")
+    (tmp_path / "matches.json").write_text(json.dumps({"matches": [{"match_id": i} for i in (1, 2, 3, 4, 5)]}))
+    (tmp_path / "replays.json").write_text(json.dumps({"replays": {"1": {}, "2": {}, "3": {}, "5": {}}}))
+    for match_id, version, slice_seconds in ((1, REPLAY_VERSION, HEAT_SLICE_SECONDS), (2, REPLAY_VERSION - 1, HEAT_SLICE_SECONDS),
+                                             (5, REPLAY_VERSION, 600)):
+        (tmp_path / "heat" / f"{match_id}.json").write_text(json.dumps({"phase_seconds": slice_seconds}))
         (tmp_path / "replay" / f"{match_id}.json").write_text(json.dumps({"v": version}))
-    assert parse_todo(tmp_path) == [2, 3]
-    assert parse_todo(tmp_path, redo=True) == [1, 2, 3]
+    assert parse_todo(tmp_path) == [2, 3, 5]
+    assert parse_todo(tmp_path, redo=True) == [1, 2, 3, 5]
 
 
 # Real odota/parser interval events for match 9098014345 (fields the heatmap reads), captured with the
