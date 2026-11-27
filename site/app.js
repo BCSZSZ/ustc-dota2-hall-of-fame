@@ -145,9 +145,15 @@ function getVisiblePlayers(match) {
   );
 }
 
-function calculate(matches, playerNames) {
+function calculate(matches, playerNames, rosterAdditions = []) {
   const stats = new Map();
   const pairs = new Map();
+  // Players added to the roster before their first league match are listed at 0 wins, 0 losses.
+  for (const accountId of rosterAdditions) {
+    if (!Number.isSafeInteger(accountId) || accountId <= 0) continue;
+    const name = playerNames?.[accountId] || `Account ${accountId}`;
+    stats.set(accountId, { accountId, name, wins: 0, losses: 0, total: 0, latestStart: 0 });
+  }
 
   for (const match of matches) {
     const players = getVisiblePlayers(match).map((player) => ({
@@ -222,7 +228,7 @@ function renderStats(players) {
     const rateCell = document.createElement("td");
     const pill = document.createElement("span");
     pill.className = "rate-pill";
-    pill.textContent = formatPercent(player.wins / player.total);
+    pill.textContent = player.total ? formatPercent(player.wins / player.total) : "—";
     rateCell.append(pill);
     row.append(rateCell);
     elements.statsBody.append(row);
@@ -323,7 +329,7 @@ function render() {
   const matches = state.data.matches.filter(
     (match) => match.start_time >= state.from && match.start_time <= state.to,
   );
-  const { players, pairs } = calculate(matches, state.data.player_names);
+  const { players, pairs } = calculate(matches, state.data.player_names, state.data.roster_additions);
   elements.matchCount.textContent = String(matches.length);
   elements.playerCount.textContent = String(players.length);
   elements.rangeDays.textContent = String(Math.max(1, Math.ceil((state.to - state.from) / DAY_SECONDS)));

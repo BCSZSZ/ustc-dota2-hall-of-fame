@@ -33,6 +33,9 @@ SEASON_START = int(datetime(2026, 9, 13, tzinfo=JST).timestamp())
 # Every player in a season match before this moment seeds the core roster. Later
 # matches count only if they include a core player, and then add their players to it.
 CORE_ROSTER_SEED_END = int(datetime(2026, 11, 27, tzinfo=JST).timestamp())
+# Core players added by hand before playing a league match. They are collected like everyone
+# else and listed on the leaderboard with no games.
+ROSTER_ADDITIONS = (191810399, 349809744)
 
 
 class LeagueCollectionError(RuntimeError):
@@ -251,7 +254,7 @@ def classify_matches(
     """Split complete matches into counted and excluded ones, plus core and neighbour IDs."""
     counted: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
-    core: set[int] = set()
+    core: set[int] = set(ROSTER_ADDITIONS)
     before_season: set[int] = set()
     for match in sorted(matches, key=lambda item: (item["start_time"], item["match_id"])):
         account_ids = _account_ids(match)
@@ -274,6 +277,7 @@ def _known_account_ids(matches: list[dict[str, Any]]) -> list[int]:
             for player in match["players"]
             if player["account_id"] is not None
         }
+        | set(ROSTER_ADDITIONS)
     )
 
 
@@ -495,6 +499,7 @@ def collect_league_data(
         "opendota_rank_tiers": opendota_rank_tiers,
         "opendota_leaderboard_ranks": opendota_leaderboard_ranks,
         "player_groups": {"core": core_ids, "neighbour": neighbour_ids},
+        "roster_additions": sorted(ROSTER_ADDITIONS),
         "matches": ordered_matches,
         "excluded_matches": excluded_matches,
     }

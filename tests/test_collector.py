@@ -181,7 +181,11 @@ def test_collector_refreshes_nicknames_for_players_in_cached_matches(tmp_path: P
     }
 
 
-def test_collector_refreshes_unique_rank_tiers_in_complete_matches(tmp_path: Path) -> None:
+def test_collector_refreshes_unique_rank_tiers_in_complete_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Only the accounts from the matches, so the request list below is exact.
+    monkeypatch.setattr("collector.ROSTER_ADDITIONS", ())
     output = tmp_path / "league.json"
     old_match = make_match(1)
     recent_match = make_match(2)
@@ -303,6 +307,14 @@ def test_classify_matches_applies_season_start_and_core_roster() -> None:
     ]
     assert 1 in core and 40 in core and 30 not in core
     assert neighbour == list(range(2, 11))
+
+
+def test_roster_additions_are_core_and_collected_without_matches() -> None:
+    from collector import ROSTER_ADDITIONS, _known_account_ids, classify_matches
+
+    assert set(ROSTER_ADDITIONS) <= set(_known_account_ids([]))
+    _, _, core, _ = classify_matches([])
+    assert set(ROSTER_ADDITIONS) <= set(core)
 
 
 def test_incremental_run_fetches_only_new_matches_and_reuses_ranks(tmp_path: Path) -> None:

@@ -107,6 +107,22 @@ test("seeds Elo with manual, medal, and medal-median baselines and applies each 
   assert.equal(findBalancedTeams(captainA, captainB, others).examined, 70);
 });
 
+test("lists roster additions with no games and their medal as the rating", () => {
+  const roster = playersById({
+    matches: [match(1, 100, true)],
+    player_names: { 99: "Newcomer" },
+    opendota_rank_tiers: { 1: 75, 99: 75 },
+    roster_additions: [99, 1, 0],
+  }, {});
+  assert.equal(roster.size, 11);
+  const added = roster.get(99);
+  assert.equal(added.name, "Newcomer");
+  assert.equal(added.games, 0);
+  assert.equal(added.inhouseWeight, 0);
+  assert.equal(added.rating, added.baseRating);
+  assert.equal(roster.get(1).games, 1);
+});
+
 test("uses the manual median only when no roster member has a public medal", () => {
   const anonymous = match(2, 200, false);
   anonymous.players[9].account_id = null;

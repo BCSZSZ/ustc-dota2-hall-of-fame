@@ -1,5 +1,5 @@
 import { heroPool, metaEdge, overallEdge, suggestBp } from "./bp-model.js?v=3";
-import { POSITION_NAMES, rateLeague, teamLineup } from "./matchmaker-model.js?v=10";
+import { POSITION_NAMES, rateLeague, teamLineup } from "./matchmaker-model.js?v=11";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#bpForm");

@@ -1,4 +1,4 @@
-import { buildLeagueRoster, describeMedals, medalEstimate } from "./matchmaker-model.js?v=10";
+import { buildLeagueRoster, describeMedals, medalEstimate } from "./matchmaker-model.js?v=11";
 import { loadSharedMmr, MAX_ALIAS_CHARS, saveSharedMmr, validAlias } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#mmrForm");

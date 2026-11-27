@@ -155,6 +155,12 @@ function prepareLeague(snapshot, manualMmr) {
     scoredMatches.push({ participants, radiantWin: match.radiant_win });
     for (const { entry } of participants.values()) entry.games += 1;
   }
+  // Players added to the roster before their first league match.
+  for (const accountId of snapshot.roster_additions || []) {
+    if (Number.isSafeInteger(accountId) && accountId > 0 && !league.has(accountId)) {
+      league.set(accountId, { accountId, name: "", games: 0 });
+    }
+  }
 
   const medalRatings = [];
   const manualRatings = [];
