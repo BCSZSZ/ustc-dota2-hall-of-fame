@@ -6,7 +6,7 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-27T01:32:16.748846+00:00",
+  "generated_at_utc": "2026-11-27T02:24:40.901607+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
@@ -65,6 +65,11 @@
     "1068845781": 72,
     "1098196409": 62,
     "1130047837": 80
+  },
+  "opendota_leaderboard_ranks": {
+    "140721966": 4740,
+    "341531496": 4119,
+    "1130047837": 302
   },
   "player_groups": {
     "core": [
