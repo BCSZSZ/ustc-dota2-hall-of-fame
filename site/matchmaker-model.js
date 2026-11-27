@@ -278,7 +278,7 @@ function validPlayer(player) {
   return Number.isSafeInteger(accountId) && accountId > 0 && Number.isFinite(player.rating);
 }
 
-export function findBalancedTeams(captainA, captainB, others, { scale = DEFAULT_MODEL.scale } = {}) {
+function checkSelection(captainA, captainB, others) {
   if (!Array.isArray(others) || others.length !== 8) {
     throw new TypeError("Select exactly eight players in addition to the two captains.");
   }
@@ -286,6 +286,55 @@ export function findBalancedTeams(captainA, captainB, others, { scale = DEFAULT_
   if (!players.every(validPlayer) || new Set(players.map((player) => player.accountId)).size !== 10) {
     throw new TypeError("Select ten distinct players with finite ratings.");
   }
+}
+
+function describeTeams(teamA, teamB, scale) {
+  const averageA = average(teamA.map((player) => player.rating));
+  const averageB = average(teamB.map((player) => player.rating));
+  const difference = averageA - averageB;
+  return { teamA, teamB, averageA, averageB, ratingGap: Math.abs(difference), winChanceA: expectedWinChance(difference, scale) };
+}
+
+// Captains pick the eight others in 1-2-2-2-1 turns, starting with the first picker.
+export const PICK_TURNS = Object.freeze([1, 2, 2, 2, 1]);
+
+// A pick strategy returns one player from `available` for the side to move.
+// Context: { side: "A" | "B", own, opponent, available, turn }.
+export const PICK_STRATEGIES = Object.freeze({
+  highestRating: Object.freeze({
+    label: "按综合分从高到低",
+    choose: ({ available }) => available.reduce((best, player) =>
+      (player.rating > best.rating || (player.rating === best.rating && player.accountId < best.accountId) ? player : best)),
+  }),
+});
+
+export function suggestPickOrder(captainA, captainB, others, {
+  firstPick = "A", strategyA = PICK_STRATEGIES.highestRating, strategyB = strategyA, scale = DEFAULT_MODEL.scale,
+} = {}) {
+  checkSelection(captainA, captainB, others);
+  if (firstPick !== "A" && firstPick !== "B") throw new TypeError("firstPick must be A or B.");
+  const teams = { A: [captainA], B: [captainB] };
+  const strategies = { A: strategyA, B: strategyB };
+  const available = [...others];
+  const picks = [];
+  PICK_TURNS.forEach((count, turn) => {
+    const side = (turn % 2 === 0) === (firstPick === "A") ? "A" : "B";
+    for (let index = 0; index < count; index += 1) {
+      const player = strategies[side].choose({
+        side, own: [...teams[side]], opponent: [...teams[side === "A" ? "B" : "A"]], available: [...available], turn,
+      });
+      const position = available.indexOf(player);
+      if (position < 0) throw new Error("Pick strategy chose a player who is not available.");
+      available.splice(position, 1);
+      teams[side].push(player);
+      picks.push({ turn, side, player });
+    }
+  });
+  return { picks, ...describeTeams(teams.A, teams.B, scale) };
+}
+
+export function findBalancedTeams(captainA, captainB, others, { scale = DEFAULT_MODEL.scale } = {}) {
+  checkSelection(captainA, captainB, others);
 
   const ordered = [...others].sort((left, right) => left.accountId - right.accountId);
   const plans = [];
@@ -294,12 +343,7 @@ export function findBalancedTeams(captainA, captainB, others, { scale = DEFAULT_
     const teamA = [captainA];
     const teamB = [captainB];
     ordered.forEach((player, index) => ((mask & (1 << index)) ? teamA : teamB).push(player));
-    const averageA = average(teamA.map((player) => player.rating));
-    const averageB = average(teamB.map((player) => player.rating));
-    const difference = averageA - averageB;
-    const ratingGap = Math.abs(difference);
-    const winChanceA = expectedWinChance(difference, scale);
-    plans.push({ mask, teamA, teamB, averageA, averageB, ratingGap, winChanceA });
+    plans.push({ mask, ...describeTeams(teamA, teamB, scale) });
   }
 
   plans.sort(compareBalance);

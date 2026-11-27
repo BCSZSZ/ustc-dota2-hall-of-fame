@@ -1,4 +1,4 @@
-import { buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams } from "./matchmaker-model.js?v=5";
+import { buildLeagueRoster, calibrateModel, describeRankTier, findBalancedTeams, PICK_STRATEGIES, suggestPickOrder } from "./matchmaker-model.js?v=6";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#draftForm");
@@ -16,6 +16,15 @@ const resultsTitle = document.querySelector("#draftResultsTitle");
 const resultsSummary = document.querySelector("#draftResultsSummary");
 const plans = document.querySelector("#draftPlans");
 const calibrationNote = document.querySelector("#calibrationNote");
+const tabs = [...document.querySelectorAll(".draft-tabs [role=tab]")];
+const firstPick = document.querySelector("#firstPick");
+const pickResults = document.querySelector("#pickResults");
+const pickResultsTitle = document.querySelector("#pickResultsTitle");
+const pickSummary = document.querySelector("#pickSummary");
+const pickOrder = document.querySelector("#pickOrder");
+const pickPlan = document.querySelector("#pickPlan");
+const submitLabels = { auto: "计算分队", pick: "生成选马顺序" };
+const teamNames = { A: "甲队", B: "乙队" };
 
 const memberCount = 8;
 const selected = new Set();
@@ -27,6 +36,7 @@ let sharedState;
 let calibration;
 let roster = [];
 let playersById = new Map();
+let mode = "auto";
 
 function make(tag, className, text = "") {
   const element = document.createElement(tag);
@@ -106,6 +116,9 @@ function renderPool() {
 function invalidatePlans() {
   results.hidden = true;
   plans.replaceChildren();
+  pickResults.hidden = true;
+  pickOrder.replaceChildren();
+  pickPlan.replaceChildren();
 }
 
 function renderTeam(label, players, average) {
@@ -131,7 +144,7 @@ function renderPlan(plan, index) {
   const card = make("article", "draft-plan");
   const heading = make("div", "draft-plan-heading");
   heading.append(
-    make("h3", "", `方案 ${index + 1}`),
+    make("h3", "", typeof index === "string" ? index : `方案 ${index + 1}`),
     make("span", "draft-gap", `均分差 ${decimal.format(plan.ratingGap)}`),
   );
 
@@ -150,6 +163,51 @@ function renderPlan(plan, index) {
   card.append(heading, forecast, bar, teams);
   return card;
 }
+
+function renderPickOrder(result) {
+  const turns = [];
+  for (const { turn, side, player } of result.picks) {
+    turns[turn] ??= { side, players: [] };
+    turns[turn].players.push(player);
+  }
+  pickOrder.replaceChildren(...turns.map(({ side, players }) => {
+    const item = make("li", `draft-pick-turn draft-pick-${side}`);
+    item.append(make("strong", "", `${teamNames[side]}选 ${players.length} 匹`));
+    for (const player of players) {
+      const pick = make("span", "draft-pick-player", player.name);
+      const score = make("small", "", integer.format(player.rating));
+      score.title = scoreDetails(player);
+      pick.append(score);
+      item.append(pick);
+    }
+    return item;
+  }));
+  pickPlan.replaceChildren(renderPlan(result, "选完后的阵容"));
+}
+
+function setMode(next) {
+  mode = next;
+  for (const tab of tabs) {
+    const active = tab.dataset.mode === mode;
+    tab.setAttribute("aria-selected", String(active));
+    tab.tabIndex = active ? 0 : -1;
+  }
+  firstPick.hidden = mode !== "pick";
+  submit.textContent = submitLabels[mode];
+  invalidatePlans();
+}
+
+for (const tab of tabs) {
+  tab.addEventListener("click", () => setMode(tab.dataset.mode));
+  tab.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const next = tabs[(tabs.indexOf(tab) + 1) % tabs.length];
+    setMode(next.dataset.mode);
+    next.focus();
+  });
+}
+
+firstPick.addEventListener("change", invalidatePlans);
 
 for (const [index, field] of captainFields.entries()) {
   field.addEventListener("change", () => {
@@ -191,10 +249,21 @@ form.addEventListener("submit", async (event) => {
   submit.textContent = "正在读取最新分数…";
   invalidatePlans();
   renderRoster(await refreshSharedScores());
-  submit.textContent = "计算分队";
+  submit.textContent = submitLabels[mode];
   if (inputs.disabled || submit.disabled) return;
   const [captainA, captainB] = captainIds().map((id) => playersById.get(id));
   const others = [...selected].map((id) => playersById.get(id));
+  if (mode === "pick") {
+    const side = form.elements.firstPick.value;
+    const strategy = PICK_STRATEGIES.highestRating;
+    const result = suggestPickOrder(captainA, captainB, others, { firstPick: side, strategyA: strategy, scale: calibration.applied.scale });
+    pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序，双方都${strategy.label}选。`;
+    renderPickOrder(result);
+    pickResults.hidden = false;
+    pickResultsTitle.focus({ preventScroll: true });
+    pickResults.scrollIntoView({ block: "start" });
+    return;
+  }
   const result = findBalancedTeams(captainA, captainB, others, { scale: calibration.applied.scale });
   resultsSummary.textContent = result.withinRange === 0
     ? `${result.examined} 套分法均超出 40%–60% 区间，显示最接近五五开的 ${result.plans.length} 套。`

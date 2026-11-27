@@ -1,4 +1,4 @@
-import { buildLeagueRoster, describeRankTier, estimateRankMmr } from "./matchmaker-model.js?v=5";
+import { buildLeagueRoster, describeRankTier, estimateRankMmr } from "./matchmaker-model.js?v=6";
 import { loadSharedMmr, MAX_ALIAS_CHARS, saveSharedMmr, validAlias } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#mmrForm");
@@ -188,7 +188,7 @@ form.addEventListener("submit", async (event) => {
     if (result.conflict && stillPending) {
       report("已读取其他访客的更新。你的修改还在，请核对后再保存。", true);
     } else {
-      report("已保存。刷新页面即可看到新称呼，平衡分队会读取最新天梯分。");
+      report("已保存。刷新页面即可看到新称呼，选马工具会读取最新天梯分。");
     }
   } catch (error) {
     report("未能确认保存结果。改动仍在，请稍后重试。", true);

@@ -4,20 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#970018" />
-    <meta name="description" content="为科大 Dota 2 内战固定两位队长，计算实力接近的 5v5 阵容。" />
-    <title>平衡分队 · 科大光荣榜</title>
+    <meta name="description" content="为科大 Dota 2 内战固定两位队长，计算实力接近的 5v5 阵容，或给出双方的选马顺序。" />
+    <title>选马工具 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css?v=20261126-1" />
-    <link rel="stylesheet" href="./matchmaker.css?v=2" />
+    <link rel="stylesheet" href="./matchmaker.css?v=3" />
     <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
-    <link rel="modulepreload" href="./matchmaker-model.js?v=5" />
+    <link rel="modulepreload" href="./matchmaker-model.js?v=6" />
     <link rel="modulepreload" href="./shared-mmr.js?v=4" />
     <link rel="preload" href="./data/league.json" as="fetch" crossorigin />
     <script>
       // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
       if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
     </script>
-    <script src="./matchmaker.js?v=9" type="module"></script>
+    <script src="./matchmaker.js?v=10" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">
@@ -27,12 +27,17 @@
           <a class="draft-back" href="./mmr.html">玩家登记 <span aria-hidden="true">→</span></a>
           <a class="draft-back" href="./stats.html">数据 <span aria-hidden="true">→</span></a>
         </nav>
-        <h1>平衡分队</h1>
-        <p>固定两位队长，再从联赛名单选八名队员，按综合 MMR 配队。</p>
+        <h1>选马工具</h1>
+        <p>固定两位队长，再从联赛名单选八匹马，按综合 MMR 自动配队或给出选马顺序。</p>
       </div>
     </header>
 
     <main class="page-shell draft-shell">
+      <div class="draft-tabs" role="tablist" aria-label="功能">
+        <button type="button" role="tab" id="tabAuto" data-mode="auto" aria-selected="true">自动分配</button>
+        <button type="button" role="tab" id="tabPick" data-mode="pick" aria-selected="false" tabindex="-1">选马建议</button>
+      </div>
+
       <form class="panel draft-setup" id="draftForm" aria-labelledby="draftSetupTitle">
         <div class="draft-heading">
           <h2 id="draftSetupTitle">选人</h2>
@@ -61,6 +66,11 @@
 
           <div class="draft-submit-row">
             <p id="draftSelection" class="draft-meta" role="status">队长 0 / 2 · 队员 0 / 8</p>
+            <div class="draft-first-pick" id="firstPick" role="radiogroup" aria-label="先选方" hidden>
+              <span>先选方</span>
+              <label><input type="radio" name="firstPick" value="A" checked /> 甲队</label>
+              <label><input type="radio" name="firstPick" value="B" /> 乙队</label>
+            </div>
             <button class="draft-primary" id="draftSubmit" type="submit" disabled>计算分队</button>
           </div>
         </fieldset>
@@ -74,11 +84,21 @@
         <div id="draftPlans" class="draft-plans"></div>
       </section>
 
+      <section class="panel draft-results" id="pickResults" aria-labelledby="pickResultsTitle" hidden>
+        <div class="draft-heading">
+          <h2 id="pickResultsTitle" tabindex="-1">选马建议</h2>
+        </div>
+        <p class="draft-meta" id="pickSummary"></p>
+        <ol class="draft-pick-order" id="pickOrder"></ol>
+        <div id="pickPlan" class="draft-plans"></div>
+      </section>
+
       <details class="draft-rules">
         <summary>评分与筛选规则</summary>
         <p>基准分优先使用手填天梯 MMR，其次取 OpenDota 最近有效段位的分段中点。冠绝一世暂用 6000 作代表值。没有公开段位时，用联赛段位估分的中位数暂估。</p>
         <p>内战 Elo 从每个人的基准分起算。综合分按个人有效内战场数采纳 Elo 修正，4 场采纳 10%，12 场 25%，36 场起 50%。</p>
         <p>预计胜率由两队平均综合分按 Elo 公式计算。超过五套符合 40%–60% 时，保留最接近 50% 的一套，再优先选队员多换边的方案。候选与五五开的偏差最多比严格第 5 名多 1 个百分点。没有任何分法落在 40%–60% 时，列出最接近五五开的 3 套。</p>
+        <p>选马建议按 1-2-2-2-1 轮流：先选方选 1 匹，后选方选 2 匹，再各 2 匹，最后先选方选 1 匹。当前策略是双方每次都选剩余综合分最高的玩家，分数相同时按 Account ID 从小到大。</p>
         <p id="calibrationNote">模型校准：正在读取联赛历史……</p>
       </details>
     </main>

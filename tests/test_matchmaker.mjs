@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildLeagueRoster, calibrateModel, DEFAULT_MODEL, describeRankTier, estimateRankMmr, findBalancedTeams } from "../site/matchmaker-model.js";
+import { buildLeagueRoster, calibrateModel, DEFAULT_MODEL, describeRankTier, estimateRankMmr, findBalancedTeams, PICK_TURNS, suggestPickOrder } from "../site/matchmaker-model.js";
 
 function match(matchId, startTime, radiantWin, firstAccountId = 1) {
   return {
@@ -292,4 +292,33 @@ test("adopts a shrunk scale once the fitted interval is closed and the history i
   const wide = findBalancedTeams(captainA, captainB, others, { scale: 2000 });
   const narrow = findBalancedTeams(captainA, captainB, others);
   assert.ok(wide.withinRange >= narrow.withinRange);
+});
+
+test("suggests 1-2-2-2-1 picks where each side takes the highest remaining rating", () => {
+  const [captainA, captainB, ...others] = playersForRatings([3000, 3000, 2000, 5000, 4000, 4500, 3500, 2500, 4000, 1000]);
+  assert.deepEqual(PICK_TURNS, [1, 2, 2, 2, 1]);
+
+  const first = suggestPickOrder(captainA, captainB, others);
+  assert.deepEqual(first.picks.map(({ turn, side, player }) => [turn, side, player.accountId]),
+    [[0, "A", 4], [1, "B", 6], [1, "B", 5], [2, "A", 9], [2, "A", 7], [3, "B", 8], [3, "B", 3], [4, "A", 10]]);
+  assert.deepEqual(first.teamA.map((player) => player.accountId), [1, 4, 9, 7, 10]);
+  assert.deepEqual(first.teamB.map((player) => player.accountId), [2, 6, 5, 8, 3]);
+  assert.equal(first.averageA, 3300);
+  assert.equal(first.averageB, 3200);
+  assert.ok(Math.abs(first.winChanceA - expectedWinChance(100)) < 1e-12);
+
+  const second = suggestPickOrder(captainA, captainB, [...others].reverse(), { firstPick: "B" });
+  assert.deepEqual(second.picks.map(({ side, player }) => [side, player.accountId]),
+    [["B", 4], ["A", 6], ["A", 5], ["B", 9], ["B", 7], ["A", 8], ["A", 3], ["B", 10]]);
+});
+
+test("lets each side use its own pick strategy and rejects invalid picks", () => {
+  const [captainA, captainB, ...others] = playersForRatings([3000, 3000, 2000, 5000, 4000, 4500, 3500, 2500, 4000, 1000]);
+  const lowest = { choose: ({ available }) => available.reduce((low, player) => (player.rating < low.rating ? player : low)) };
+  const { teamA, teamB } = suggestPickOrder(captainA, captainB, others, { strategyB: lowest });
+  assert.deepEqual(teamA.map((player) => player.accountId), [1, 4, 6, 5, 9]);
+  assert.deepEqual(teamB.map((player) => player.accountId), [2, 10, 3, 8, 7]);
+  assert.throws(() => suggestPickOrder(captainA, captainB, others, { firstPick: "C" }), TypeError);
+  assert.throws(() => suggestPickOrder(captainA, captainB, others.slice(1)), TypeError);
+  assert.throws(() => suggestPickOrder(captainA, captainB, others, { strategyA: { choose: () => captainB } }), Error);
 });
