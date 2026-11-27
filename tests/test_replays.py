@@ -377,8 +377,10 @@ def test_jungler_position_ganks_and_counterpart(tmp_path: Path) -> None:
     jungler = row[2]
     # Radiant is short in top (1 v 2). The jungler out-farmed slot 0 by 10:00, so it is that off lane's core (3) and
     # slot 0 its support (4): slot 0 pairs with the Dire support and the jungler faces the Dire core, and back.
+    # Dire's safe lane (top) held 128 and 130: 128 had more gold at 10:00 (no last hits either side), so 130 is its
+    # support, 5 rather than OpenDota's 4.
     assert json.loads((tmp_path / "positions.json").read_text()) == {"7": {
-        "0": {"pos": 4, "source": "jungle", "opendota": 1}}}
+        "0": {"pos": 4, "source": "jungle", "opendota": 1}, "130": {"pos": 5, "source": "replay", "opendota": 4}}}
     # The jungler is grouped with top (Radiant's off lane) and counted there: 1000 + 3000 against 3000 + 1500 is a loss.
     assert (jungler["lane"], jungler["group"], jungler["role"], jungler["kind"]) == ("jungle", "top", "off", "core")
     assert (jungler["opp"], jungler["opp_gold10"], jungler["result"], row[0]["result"]) == (128, 3000, "L", "L")
@@ -390,7 +392,8 @@ def test_jungler_position_ganks_and_counterpart(tmp_path: Path) -> None:
     index = json.loads((tmp_path / "lanes.json").read_text())
     row = {r[1]: dict(zip(index["columns"], r)) for r in index["rows"]}
     assert json.loads((tmp_path / "positions.json").read_text())["7"] == {
-        "0": {"pos": 3, "source": "manual", "opendota": 1}, "2": {"pos": 4, "source": "manual", "opendota": 3}}
+        "0": {"pos": 3, "source": "manual", "opendota": 1}, "2": {"pos": 4, "source": "manual", "opendota": 3},
+        "130": {"pos": 5, "source": "replay", "opendota": 4}}
     assert (row[2]["opp"], row[0]["opp"], row[130]["opp"]) == (130, 128, 2)
     assert jungler["ganks"] == [[300, 339, "top", [128], 0], [450, 490, "bot", [], 1]]
     assert jungler["short_lane"] == ["top", 1, 2, "L"]
@@ -419,3 +422,25 @@ def test_level_events_take_the_first_second_at_level_six() -> None:
 
     entries = [{"type": "interval", "time": t, "slot": 0, "level": 1 + t // 100} for t in range(0, 700)]
     assert level_events(entries)["levels"] == {"0": [500, 4, 7]}
+
+
+def test_replay_lanes_set_core_and_support_by_last_hits(tmp_path: Path) -> None:
+    from replay_events import REPLAY_VERSION, build_lane_index
+
+    (tmp_path / "matches").mkdir()
+    (tmp_path / "replay").mkdir()
+    # OpenDota swapped Dire's safe-lane core (131) with an off-lane support (129).
+    players = [{"slot": slot, "pos": pos} for slot, pos in {0: 2, 1: 5, 2: 3, 3: 1, 4: 4, 128: 3, 129: 1, 130: 2, 131: 5, 132: 4}.items()]
+    (tmp_path / "matches.json").write_text(json.dumps({"matches": [{"match_id": 8, "players": players}]}))
+    last_hits = {0: 48, 1: 10, 2: 40, 3: 45, 4: 2, 128: 42, 129: 22, 130: 48, 131: 41, 132: 8}
+    gold = {129: 3828, 128: 3670}
+    (tmp_path / "matches" / "8.json").write_text(json.dumps({"series": {
+        str(slot): {"gold": [0] * 10 + [gold.get(slot, 2000)], "lh": [0] * 10 + [lh], "xp": [0] * 11, "dn": [0] * 11}
+        for slot, lh in last_hits.items()}}))
+    lanes = {"0": "mid", "1": "bot", "2": "top", "3": "bot", "4": "top", "128": "bot", "129": "bot", "130": "mid", "131": "top", "132": "top"}
+    (tmp_path / "replay" / "8.json").write_text(json.dumps({"v": REPLAY_VERSION, "away": {}, "roams": [], "lanes": lanes, "deaths": []}))
+
+    build_lane_index(tmp_path)
+    assert json.loads((tmp_path / "positions.json").read_text()) == {"8": {
+        "129": {"pos": 4, "source": "replay", "opendota": 1}, "131": {"pos": 1, "source": "replay", "opendota": 5},
+        "132": {"pos": 5, "source": "replay", "opendota": 4}}}

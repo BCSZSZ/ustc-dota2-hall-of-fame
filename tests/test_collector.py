@@ -360,26 +360,9 @@ def test_stratz_medals_are_stored_beside_opendota_and_kept_when_stratz_fails() -
     match = normalise_match(make_match(1), 19224)
     accounts = [str(player["account_id"]) for player in match["players"] if player["account_id"]]
     payload = {"matches": [match], "opendota_rank_tiers": {accounts[0]: 72, accounts[1]: 80}, "opendota_leaderboard_ranks": {}}
-    ranks = {accounts[0]: {"rank_tier": 65, "leaderboard_rank": None}, accounts[1]: {"rank_tier": 80, "leaderboard_rank": 302},
-             accounts[2]: {"rank_tier": 99}, "1": {"rank_tier": 80}}
+    ranks = {accounts[0]: {"rank_tier": 65}, accounts[1]: {"rank_tier": 80}, accounts[2]: {"rank_tier": 99}, "1": {"rank_tier": 80}}
     assert _apply_stratz_ranks(payload, ranks, {}) == 1
     assert payload["stratz_rank_tiers"] == {accounts[0]: 65, accounts[1]: 80}
-    assert payload["opendota_leaderboard_ranks"] == {accounts[1]: 302}
+    assert payload["opendota_leaderboard_ranks"] == {}
     _apply_stratz_ranks(payload, None, {accounts[2]: 54, "1": 30})
     assert payload["stratz_rank_tiers"] == {accounts[2]: 54}
-
-
-def test_league_match_ids_join_opendota_and_stratz(tmp_path: Path) -> None:
-    output = tmp_path / "league.json"
-    write_snapshot(output, {"league_id": 19224, "matches": [normalise_match(make_match(1), 19224)]})
-    responses = {"/leagues/19224": {"name": "Test League"}, "/leagues/19224/matchIds": [2], "/matches/2": make_match(2),
-                 "/matches/3": make_match(3), "/matches/1": make_match(1)}
-
-    joined = collect_league_data(league_id=19224, output_path=output, refresh_recent=0, client=FakeClient(responses),  # type: ignore[arg-type]
-                                 incremental=True, stratz_match_ids=[3])
-    assert [match["match_id"] for match in joined["matches"]] == [2, 3]
-    assert joined["metadata"]["match_id_sources"] == {"opendota": 1, "stratz": 1, "only_opendota": [2], "only_stratz": [3]}
-
-    kept = collect_league_data(league_id=19224, output_path=output, refresh_recent=0, client=FakeClient(responses),  # type: ignore[arg-type]
-                               incremental=True)
-    assert [match["match_id"] for match in kept["matches"]] == [1, 2]

@@ -19,7 +19,7 @@ from match_details import _read, ensure_images, refresh_match_details
 from replays import REPLAY_DIR, archive_all, gh_uploader, plan_downloads, read_manifest, record_archives
 from hero_meta import refresh_hero_meta
 from position_stats import refresh_position_stats
-from stratz import StratzError, compare_matches, compare_positions, refresh_stratz, stratz_client, stratz_league_match_ids, stratz_ranks
+from stratz import StratzError, compare_matches, compare_positions, refresh_stratz, stratz_client, stratz_ranks
 
 API_BASE_URL = "https://api.opendota.com/api"
 STEAM_COMMUNITY_URL = "https://steamcommunity.com"
@@ -313,17 +313,11 @@ def _valid_leaderboard_rank(value: Any) -> int | None:
 
 
 def _apply_stratz_ranks(payload: dict[str, Any], ranks: dict[str, dict[str, Any]] | None, previous: dict[str, Any]) -> int:
-    """Store STRATZ's medals beside OpenDota's (the page combines the two) and fill Immortal leaderboard places
-    OpenDota lacks. Without an answer from STRATZ, its previous medals stay. Returns how many medals differ."""
+    """Store STRATZ's medals beside OpenDota's (the page combines the two). Without an answer from STRATZ, its
+    previous medals stay. Returns how many medals differ."""
     accounts = [str(account_id) for account_id in _known_account_ids(payload["matches"])]
-    if ranks is None:
-        payload["stratz_rank_tiers"] = {key: tier for key in accounts if (tier := _valid_rank_tier(previous.get(key))) is not None}
-    else:
-        payload["stratz_rank_tiers"] = {key: tier for key in accounts if (tier := _valid_rank_tier((ranks.get(key) or {}).get("rank_tier"))) is not None}
-        for key in accounts:
-            place = _valid_leaderboard_rank((ranks.get(key) or {}).get("leaderboard_rank"))
-            if payload["opendota_rank_tiers"].get(key) == 80 and key not in payload["opendota_leaderboard_ranks"] and place is not None:
-                payload["opendota_leaderboard_ranks"][key] = place
+    source = previous if ranks is None else {key: (ranks.get(key) or {}).get("rank_tier") for key in accounts}
+    payload["stratz_rank_tiers"] = {key: tier for key in accounts if (tier := _valid_rank_tier(source.get(key))) is not None}
     return sum(1 for key, tier in payload["stratz_rank_tiers"].items() if payload["opendota_rank_tiers"].get(key) not in (None, tier))
 
 
@@ -402,10 +396,7 @@ def collect_league_data(
     steam_client: httpx.Client | None = None,
     incremental: bool = False,
     raw_by_id: dict[int, dict[str, Any]] | None = None,
-    stratz_match_ids: list[int] | None = None,
 ) -> dict[str, Any]:
-    """`stratz_match_ids` is STRATZ's list of the league's matches, joined with OpenDota's; None when STRATZ
-    gave none this run, and then every match already collected stays listed."""
     league = client.get_json(f"/leagues/{league_id}")
     match_ids_raw = client.get_json(f"/leagues/{league_id}/matchIds")
     if not isinstance(league, dict):
@@ -413,10 +404,9 @@ def collect_league_data(
     if not isinstance(match_ids_raw, list):
         raise LeagueCollectionError("OpenDota returned an invalid match-ID list")
 
-    opendota_ids = {int(match_id) for match_id in match_ids_raw if int(match_id) > 0}
+    # STRATZ does not index this ticket league (it lists no matches), so the list is OpenDota's alone.
+    match_ids = sorted({int(match_id) for match_id in match_ids_raw if int(match_id) > 0})
     existing, player_names, previous_rank_tiers, previous_leaderboard_ranks = _load_existing(output_path, league_id)
-    stratz_ids = {match_id for match_id in stratz_match_ids or [] if match_id > 0}
-    match_ids = sorted(opendota_ids | stratz_ids | (set(existing) if stratz_match_ids is None else set()))
     refresh_ids = set(match_ids[-refresh_recent:]) if refresh_recent > 0 else set()
     unavailable: list[dict[str, Any]] = []
     incomplete_rosters: list[int] = []
@@ -486,13 +476,6 @@ def collect_league_data(
         "source": "OpenDota public API",
         "metadata": {
             "match_ids_returned": len(match_ids),
-            # The two sources' league match lists, and the IDs only one of them had.
-            "match_id_sources": {
-                "opendota": len(opendota_ids),
-                "stratz": None if stratz_match_ids is None else len(stratz_ids),
-                "only_opendota": sorted(opendota_ids - stratz_ids) if stratz_match_ids is not None else [],
-                "only_stratz": sorted(stratz_ids - opendota_ids),
-            },
             "matches_available": len(ordered_matches),
             "season_start_utc": datetime.fromtimestamp(SEASON_START, UTC).isoformat(),
             "core_roster_seed_end_utc": datetime.fromtimestamp(CORE_ROSTER_SEED_END, UTC).isoformat(),
@@ -557,12 +540,6 @@ def main(argv: list[str] | None = None) -> int:
         # One STRATZ client for the run, so its IP-limit wait happens at most once.
         token = os.getenv("STRATZ_TOKEN")
         stratz_http = stack.enter_context(stratz_client(token)) if token else None
-        stratz_ids = None
-        if stratz_http is not None:
-            try:
-                stratz_ids = stratz_league_match_ids(stratz_http, args.league_id)
-            except (httpx.HTTPError, ValueError, StratzError) as error:
-                print(f"STRATZ: league match list failed ({error}); keeping every match already collected")
         raw_by_id: dict[int, dict[str, Any]] = {}
         payload = collect_league_data(
             league_id=args.league_id,
@@ -572,11 +549,7 @@ def main(argv: list[str] | None = None) -> int:
             steam_client=None if args.incremental else steam_client,
             incremental=args.incremental,
             raw_by_id=raw_by_id,
-            stratz_match_ids=stratz_ids,
         )
-        sources = payload["metadata"]["match_id_sources"]
-        print(f"League match IDs: OpenDota {sources['opendota']}, STRATZ {sources['stratz']}, "
-              f"only OpenDota {len(sources['only_opendota'])}, only STRATZ {sources['only_stratz']}")
         data_dir = args.output.parent
         match_ids = [match["match_id"] for match in payload["matches"]]
         now = datetime.now(UTC)

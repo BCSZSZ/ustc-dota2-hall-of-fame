@@ -348,9 +348,13 @@ def build_lane_index(data_dir: Path) -> int:
     """Per player and match: laning-phase lane, final position, counterpart, 5/10-minute numbers, deaths, roams.
 
     Writes site/data/lanes.json and site/data/positions.json. The lane comes from site/data/lane_overrides.json
-    when set there, then from the replay, then from OpenDota. Positions are OpenDota's estimate except for a
-    jungler and the teammate left alone in the lane its side is short in: whichever had more net worth at 10:00 is
-    that lane's core (1 in the safe lane, 3 in the off lane) and the other its support (5 or 4).
+    when set there, then from the replay, then from OpenDota. Where the replay (or a manual lane) puts two teammates
+    in a side lane, the one with more last hits at 10:00 (then more gold) is that lane's core (1 in the safe lane,
+    3 in the off lane) and the other its support (5 or 4); a lone mid laner is 2. On the 2026-11 matches this agreed
+    with STRATZ's positions on all 128 slots both had, where OpenDota's estimate had swapped a safe-lane core with
+    an off-lane support. Elsewhere positions are OpenDota's estimate, except a jungler and the teammate left alone
+    in the lane its side is short in: whichever had more net worth at 10:00 is that lane's core and the other its
+    support.
     site/data/position_overrides.json overrides both. A jungler is grouped with that short lane (column "group";
     "lane" stays "jungle"), so it is paired and counted there. Counterparts pair core with core and support with
     support; "kind" is core for positions 1-3.
@@ -379,6 +383,23 @@ def build_lane_index(data_dir: Path) -> int:
         value = lambda slot, key, minute: _at((series.get(str(slot)) or {}).get(key), minute)
         pos_of = {player["slot"]: player.get("pos") for player in players}
         pos_source = {}
+        for radiant in (True, False):
+            side = [player["slot"] for player in players if (player["slot"] < 128) == radiant]
+            for lane in ("top", "mid", "bot"):
+                group = [slot for slot in side if lane_of[slot] == lane]
+                if not group or any(source_of[slot] == "opendota" for slot in group):
+                    continue
+                role = _role(radiant, lane)
+                if role == "mid" and len(group) == 1:
+                    assigned = {group[0]: 2}
+                elif role in ("safe", "off") and len(group) == 2:
+                    core, support = sorted(group, key=lambda slot: (-(value(slot, "lh", 10) or 0), -(value(slot, "gold", 10) or 0), slot))
+                    assigned = dict(zip((core, support), (1, 5) if role == "safe" else (3, 4)))
+                else:
+                    continue
+                for slot, pos in assigned.items():
+                    if pos != pos_of[slot]:
+                        pos_of[slot], pos_source[slot] = pos, "replay"
         for player in players:
             slot = player["slot"]
             short = _short_lane(slot, players, lane_of) if lane_of[slot] == "jungle" else None

@@ -20,7 +20,7 @@ USER_AGENT = "STRATZ_API"
 # The result, heroes, accounts and positions are kept to cross-check OpenDota's copy of the match.
 MATCH_QUERY = ("query($id: Long!) { match(id: $id) { rank winRates didRadiantWin "
                "players { playerSlot imp heroId steamAccountId position } } }")
-LEAGUE_QUERY = "query($id: Int!, $skip: Int!) { league(id: $id) { matches(request: {take: 100, skip: $skip}) { id } } }"
+
 RETRY_DOWNLOAD = "mutation($id: Long!) { retryMatchDownload(matchId: $id) }"
 # Per-minute stats and STRATZ's per-minute average for the hero and position, which IMP is measured against.
 MINUTE_FIELDS = """durationSeconds topLaneOutcome midLaneOutcome bottomLaneOutcome
@@ -69,18 +69,18 @@ def post_graphql(http: httpx.Client, query: str, variables: dict[str, Any] | Non
     raise StratzError("STRATZ IP address limit")
 
 
+# STRATZ's seasonLeaderboardRank is empty for every league player, so only the medal is read.
 RANKS_QUERY = """query($ids: [Long]!) { players(steamAccountIds: $ids) {
-  steamAccountId steamAccount { seasonRank seasonLeaderboardRank } } }"""
+  steamAccountId steamAccount { seasonRank } } }"""
 
 
 def stratz_ranks(http: httpx.Client, account_ids: Iterable[int]) -> dict[str, dict[str, Any]]:
-    """Medal (rank tier) and leaderboard place per account, as STRATZ last saw them."""
+    """Medal (rank tier) per account, as STRATZ last saw it."""
     ids = list(account_ids)
     # STRATZ answers at most five players per request.
     players = [player for start in range(0, len(ids), 5)
                for player in post_graphql(http, RANKS_QUERY, {"ids": ids[start:start + 5]}).get("players") or []]
-    return {str(player["steamAccountId"]): {"rank_tier": (player.get("steamAccount") or {}).get("seasonRank"),
-                                           "leaderboard_rank": (player.get("steamAccount") or {}).get("seasonLeaderboardRank")}
+    return {str(player["steamAccountId"]): {"rank_tier": (player.get("steamAccount") or {}).get("seasonRank")}
             for player in players if isinstance(player, dict) and player.get("steamAccountId")}
 
 
@@ -157,16 +157,6 @@ def summarise(match: dict[str, Any] | None) -> dict[str, Any] | None:
                                                     int(str(player.get("position") or "")[-1:] or 0) or None]
                     for player in players},
     }
-
-
-def stratz_league_match_ids(http: httpx.Client, league_id: int) -> list[int]:
-    ids: list[int] = []
-    for skip in range(0, 2000, 100):
-        page = ((post_graphql(http, LEAGUE_QUERY, {"id": league_id, "skip": skip}).get("league") or {}).get("matches") or [])
-        ids += [match["id"] for match in page if isinstance(match.get("id"), int)]
-        if len(page) < 100:
-            break
-    return ids
 
 
 def compare_positions(summaries: Iterable[dict[str, Any]], corrections: dict[str, Any], stratz: dict[str, Any]) -> list[str]:
