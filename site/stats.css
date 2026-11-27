@@ -1385,6 +1385,11 @@
   width: 100%;
 }
 
+/* As wide as the page allows while the whole square map still fits in the window height. */
+.match-map .map-stage {
+  width: min(100%, calc(100svh - 24px));
+}
+
 .map-canvas {
   display: block;
   width: 100%;

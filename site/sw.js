@@ -2,7 +2,7 @@
 // Images and versioned files (?v=) never change under the same URL, so they are kept as first fetched.
 // Pages and data are shown from the cache and refreshed in the background: a new collection appears on the
 // next visit. Bump CACHE to drop everything, e.g. after replacing an image or changing a data format.
-const CACHE = "hof-1";
+const CACHE = "hof-2";
 
 self.addEventListener("install", () => self.skipWaiting());
 
