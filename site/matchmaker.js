@@ -14,33 +14,36 @@ const noMatches = document.querySelector("#draftNoMatches");
 const dataStatus = document.querySelector("#draftDataStatus");
 const selectionStatus = document.querySelector("#draftSelection");
 const submit = document.querySelector("#draftSubmit");
+const playersSection = document.querySelector("#draftPlayers");
+const playersTitle = document.querySelector("#draftPlayersTitle");
+const playerCards = document.querySelector("#draftPlayerCards");
 const results = document.querySelector("#draftResults");
-const resultsTitle = document.querySelector("#draftResultsTitle");
 const resultsSummary = document.querySelector("#draftResultsSummary");
 const plans = document.querySelector("#draftPlans");
 const calibrationNote = document.querySelector("#calibrationNote");
-const tabs = [...document.querySelectorAll(".draft-tabs [role=tab]")];
 const pickOptions = document.querySelector("#pickOptions");
 const pickResults = document.querySelector("#pickResults");
-const pickResultsTitle = document.querySelector("#pickResultsTitle");
 const pickSummary = document.querySelector("#pickSummary");
+const pickForecast = document.querySelector("#pickForecast");
 const pickOrder = document.querySelector("#pickOrder");
-const pickPlan = document.querySelector("#pickPlan");
-const submitLabels = { auto: "计算分队", pick: "生成选马顺序" };
 const teamNames = { A: "甲队", B: "乙队" };
+const sections = [playersSection, results, pickResults];
 
 const memberCount = 8;
 const selected = new Set();
 const integer = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat("zh-CN", { style: "percent", minimumFractionDigits: 1 });
+const wholePercent = new Intl.NumberFormat("zh-CN", { style: "percent" });
 let snapshot;
 let sharedState;
 let calibration;
 let roster = [];
 let playersById = new Map();
 let positionStats = null;
-let mode = "auto";
+let heroNames = {};
+// The ten players of the last calculation, kept so changing the first pick only redraws the suggestion.
+let lineup = null;
 
 function make(tag, className, text = "") {
   const element = document.createElement(tag);
@@ -72,7 +75,7 @@ const chipNotes = { main: "最常打", rare: "少打" };
 function positionStrip(player) {
   const profile = positionProfile(player);
   if (!profile) return make("small", "pos-strip-empty", "近期公开比赛不足 30 场，各号位都按综合分");
-  const strip = make("span", "pos-strip");
+  const strip = make("div", "pos-strip");
   for (const slot of profile) {
     const chip = make("span", `pos-chip ${slot.tag}`);
     chip.append(make("small", "", `${slot.position} ${slot.name}`), make("strong", "", integer.format(slot.rating)),
@@ -88,6 +91,13 @@ function positionDetails(player, slot) {
   const record = `近 ${player.positionGames} 场（${player.positionSince} 起）打了 ${slot.games} 场 ${slot.position} 号位，胜 ${slot.wins} 场`;
   return slot.rare ? `${record} · 少于 ${POSITION_MIN_GAMES} 场，按综合分 ${integer.format(player.rating)} − 500 计`
     : `${record} · 综合分 ${integer.format(player.rating)}，位置修正 ${slot.delta >= 0 ? "+" : "−"}${integer.format(Math.abs(slot.delta))}`;
+}
+
+function heroIcon(id) {
+  const name = heroNames[id]?.name ?? `英雄 ${id}`;
+  const image = make("img", "draft-hero-img");
+  Object.assign(image, { src: `./img/heroes/${id}.webp`, alt: name, title: name, loading: "lazy" });
+  return image;
 }
 
 function renderSelection() {
@@ -129,12 +139,10 @@ function renderPool() {
     const info = make("span", "draft-player-info");
     const name = make("span", "draft-player-name", player.name);
     name.title = player.name;
-    const account = player.accountId + " · " + ratingSource(player);
-    info.append(name, make("small", "draft-player-id", account));
+    info.append(name, make("small", "draft-player-id", player.accountId + " · " + ratingSource(player)));
     const rating = make("strong", "draft-player-rating", integer.format(player.rating));
     rating.title = scoreDetails(player);
     label.append(checkbox, info, rating);
-    if (positionStats) label.append(positionStrip(player));
     items.append(label);
   }
   pool.replaceChildren(items);
@@ -143,26 +151,76 @@ function renderPool() {
 }
 
 function invalidatePlans() {
-  results.hidden = true;
+  lineup = null;
+  for (const section of sections) section.hidden = true;
+  playerCards.replaceChildren();
   plans.replaceChildren();
-  pickResults.hidden = true;
   pickOrder.replaceChildren();
-  pickPlan.replaceChildren();
+  pickForecast.replaceChildren();
 }
 
-function renderTeam(label, players, average, lineup) {
+// ---------- 参赛选手 ----------
+
+function playerCard(player, role) {
+  const card = make("article", `draft-card${role ? " captain-" + role : ""}`);
+  const head = make("div", "draft-card-head");
+  const who = make("div", "draft-card-who");
+  if (role) who.append(make("span", "draft-card-role", `${teamNames[role]}队长`));
+  const name = make("h3", "draft-card-name", player.name);
+  name.title = `${player.name}（${player.accountId}）`;
+  const medal = describeRankTier(player.rankTier, player.leaderboardRank);
+  who.append(name, make("small", "draft-meta",
+    `${player.ratingSource === "manual" ? "手填天梯分" : medal || ratingSource(player)} · 内战 ${player.games} 场`));
+  const score = make("div", "draft-card-score");
+  const value = make("strong", "", integer.format(player.rating));
+  value.title = scoreDetails(player);
+  score.append(value, make("small", "", "综合分"));
+  head.append(who, score);
+  card.append(head);
+
+  const main = positionProfile(player)?.filter((slot) => slot.tag === "main") ?? [];
+  if (main.length) {
+    const tags = make("div", "draft-card-tags");
+    for (const slot of main) tags.append(make("span", "pos-tag", `主打 ${slot.position} 号位 ${slot.name}`));
+    card.append(tags);
+  }
+  if (positionStats) card.append(positionStrip(player));
+
+  const heroes = positionStats?.players?.[player.accountId]?.heroes ?? [];
+  if (heroes.length) {
+    const list = make("div", "draft-card-heroes");
+    list.append(make("small", "draft-meta", "常用英雄"));
+    for (const [id, games, wins] of heroes) {
+      const entry = make("span", "draft-hero");
+      entry.title = `${heroNames[id]?.name ?? `英雄 ${id}`}：近 ${player.positionGames ?? "100"} 场里 ${games} 场，胜 ${wins} 场`;
+      entry.append(heroIcon(id), make("small", "", `${games} 场 ${wholePercent.format(wins / games)}`));
+      list.append(entry);
+    }
+    card.append(list);
+  }
+  return card;
+}
+
+function renderPlayers({ captainA, captainB, others }) {
+  const byRating = [...others].sort((left, right) => right.rating - left.rating || left.accountId - right.accountId);
+  playerCards.replaceChildren(playerCard(captainA, "A"), playerCard(captainB, "B"), ...byRating.map((player) => playerCard(player)));
+}
+
+// ---------- 自动分队 ----------
+
+function renderTeam(label, players, average, teamLineup) {
   const team = make("div", "draft-team");
-  const heading = make("h4", "", `${label} · ${lineup ? "阵容分" : "均分"} ${decimal.format(average)}`);
+  const heading = make("h4", "", `${label} · ${teamLineup ? "阵容分" : "均分"} ${decimal.format(average)}`);
   const list = make("ul", "draft-team-players");
-  if (lineup) {
-    for (const slot of lineup) {
+  if (teamLineup) {
+    for (const slot of teamLineup) {
       const { player } = slot;
       const row = make("li", "");
       row.dataset.accountId = String(player.accountId);
       const name = make("span", "draft-team-player");
       name.append(make("small", "draft-position", `${slot.position} ${POSITION_NAMES[slot.position]}`), player.name);
       if (player === players[0]) name.append(make("small", "draft-role", "队长"));
-      if (slot.rare) name.append(make("small", "draft-role draft-rare", "玩的少"));
+      if (slot.rare) name.append(make("small", "draft-role draft-rare", "少打"));
       else if (!player.positions) name.append(make("small", "draft-role", "不分号位"));
       const score = make("strong", "", integer.format(slot.rating));
       score.title = positionDetails(player, slot);
@@ -187,75 +245,86 @@ function renderTeam(label, players, average, lineup) {
   return team;
 }
 
+function forecast(winChanceA) {
+  const line = make("div", "draft-forecast");
+  line.append(
+    make("strong", "", `甲队 ${percent.format(winChanceA)}`),
+    make("span", "", "预计胜率"),
+    make("strong", "", `乙队 ${percent.format(1 - winChanceA)}`),
+  );
+  const bar = make("div", "draft-odds");
+  bar.style.setProperty("--team-a-odds", `${winChanceA * 100}%`);
+  bar.setAttribute("aria-hidden", "true");
+  return [line, bar];
+}
+
 function renderPlan(plan, index) {
   const card = make("article", "draft-plan");
   const heading = make("div", "draft-plan-heading");
-  heading.append(
-    make("h3", "", typeof index === "string" ? index : `方案 ${index + 1}`),
-    make("span", "draft-gap", `均分差 ${decimal.format(plan.ratingGap)}`),
-  );
-
-  const forecast = make("div", "draft-forecast");
-  forecast.append(
-    make("strong", "", `甲队 ${percent.format(plan.winChanceA)}`),
-    make("span", "", "预计胜率"),
-    make("strong", "", `乙队 ${percent.format(1 - plan.winChanceA)}`),
-  );
-  const bar = make("div", "draft-odds");
-  bar.style.setProperty("--team-a-odds", `${plan.winChanceA * 100}%`);
-  bar.setAttribute("aria-hidden", "true");
-
+  heading.append(make("h3", "", `方案 ${index + 1}`), make("span", "draft-gap", `分差 ${decimal.format(plan.ratingGap)}`));
   const teams = make("div", "draft-teams");
   teams.append(renderTeam("甲队", plan.teamA, plan.averageA, plan.lineupA), renderTeam("乙队", plan.teamB, plan.averageB, plan.lineupB));
-  card.append(heading, forecast, bar, teams);
+  card.append(heading, ...forecast(plan.winChanceA), teams);
   return card;
 }
 
-function renderPickOrder(result) {
+function renderAuto({ captainA, captainB, others }) {
+  const result = findBalancedTeams(captainA, captainB, others, { scale: calibration.applied.scale, positions: Boolean(positionStats) });
+  resultsSummary.textContent = result.withinRange === 0
+    ? `${result.examined} 套分法均超出 40%–60% 区间，显示最接近五五开的 ${result.plans.length} 套。`
+    : `${result.examined} 套分法中有 ${result.withinRange} 套在 40%–60% 区间，显示 ${result.plans.length} 套。`;
+  plans.replaceChildren(...result.plans.map(renderPlan));
+}
+
+// ---------- 选马建议 ----------
+
+function pickCard(player, slot, side) {
+  const card = make("span", `draft-mini draft-mini-${side}${slot?.rare ? " rare" : ""}`);
+  card.append(make("small", "", slot ? `${slot.position} 号位 ${POSITION_NAMES[slot.position]}` : "不分号位"),
+    make("strong", "", player.name));
+  const score = make("em", "", integer.format(slot?.rating ?? player.rating));
+  if (slot?.rare) score.append(make("b", "", "少打"));
+  card.append(score);
+  card.title = slot ? positionDetails(player, slot) : scoreDetails(player);
+  return card;
+}
+
+function turnLabel(title, detail) {
+  const label = make("span", "draft-pick-label");
+  label.append(make("strong", "", title), make("small", "", detail));
+  return label;
+}
+
+function renderPick({ captainA, captainB, others }) {
+  const side = pickOptions.querySelector("input:checked").value;
+  const result = suggestPickOrder(captainA, captainB, others, {
+    firstPick: side, scale: calibration.applied.scale, positions: Boolean(positionStats),
+  });
+  const slotOf = (player, pickSide) => (pickSide === "A" ? result.lineupA : result.lineupB)?.find((entry) => entry.player === player);
+  pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序。双方都预判对方的选法，每一手都取推演到选完后对本方最好的人；卡片上是这个人选完后打的号位和该号位估分。` +
+    (positionStats ? "" : "位置数据读取失败，按均分计算。");
+  const scores = make("p", "draft-meta draft-pick-scores",
+    `选完后阵容分：甲队 ${decimal.format(result.averageA)} · 乙队 ${decimal.format(result.averageB)}`);
+  pickForecast.replaceChildren(...forecast(result.winChanceA), scores);
+
+  const captains = make("li", "draft-pick-turn draft-pick-captains");
+  captains.append(turnLabel("队长", "甲队 · 乙队"), pickCard(captainA, slotOf(captainA, "A"), "A"), pickCard(captainB, slotOf(captainB, "B"), "B"));
   const turns = [];
-  for (const { turn, side, player } of result.picks) {
-    turns[turn] ??= { side, players: [] };
+  for (const { turn, side: pickSide, player } of result.picks) {
+    turns[turn] ??= { side: pickSide, players: [] };
     turns[turn].players.push(player);
   }
-  pickOrder.replaceChildren(...turns.map(({ side, players }) => {
-    const item = make("li", `draft-pick-turn draft-pick-${side}`);
-    item.append(make("strong", "", `${teamNames[side]}选 ${players.length} 匹`));
-    for (const player of players) {
-      const pick = make("span", "draft-pick-player", player.name);
-      const slot = (side === "A" ? result.lineupA : result.lineupB)?.find((entry) => entry.player === player);
-      const score = make("small", "", slot ? `${slot.position} 号位 ${integer.format(slot.rating)}` : integer.format(player.rating));
-      score.title = slot ? positionDetails(player, slot) : scoreDetails(player);
-      pick.append(score);
-      item.append(pick);
-    }
+  pickOrder.replaceChildren(captains, ...turns.map(({ side: pickSide, players }, turn) => {
+    const item = make("li", `draft-pick-turn draft-pick-${pickSide}`);
+    item.append(turnLabel(`第 ${turn + 1} 轮`, `${teamNames[pickSide]}选 ${players.length} 匹`),
+      ...players.map((player) => pickCard(player, slotOf(player, pickSide), pickSide)));
     return item;
   }));
-  pickPlan.replaceChildren(renderPlan(result, "选完后的阵容"));
 }
 
-function setMode(next) {
-  mode = next;
-  for (const tab of tabs) {
-    const active = tab.dataset.mode === mode;
-    tab.setAttribute("aria-selected", String(active));
-    tab.tabIndex = active ? 0 : -1;
-  }
-  pickOptions.hidden = mode !== "pick";
-  submit.textContent = submitLabels[mode];
-  invalidatePlans();
-}
-
-for (const tab of tabs) {
-  tab.addEventListener("click", () => setMode(tab.dataset.mode));
-  tab.addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    const next = tabs[(tabs.indexOf(tab) + 1) % tabs.length];
-    setMode(next.dataset.mode);
-    next.focus();
-  });
-}
-
-pickOptions.addEventListener("change", invalidatePlans);
+pickOptions.addEventListener("change", () => {
+  if (lineup) renderPick(lineup);
+});
 
 for (const [index, field] of captainFields.entries()) {
   field.addEventListener("change", () => {
@@ -297,31 +366,16 @@ form.addEventListener("submit", async (event) => {
   submit.textContent = "正在读取最新分数…";
   invalidatePlans();
   renderRoster(await refreshSharedScores());
-  submit.textContent = submitLabels[mode];
+  submit.textContent = "计算分队";
   if (inputs.disabled || submit.disabled) return;
   const [captainA, captainB] = captainIds().map((id) => playersById.get(id));
-  const others = [...selected].map((id) => playersById.get(id));
-  if (mode === "pick") {
-    const side = form.elements.firstPick.value;
-    const result = suggestPickOrder(captainA, captainB, others, {
-      firstPick: side, scale: calibration.applied.scale, positions: Boolean(positionStats),
-    });
-    pickSummary.textContent = `${teamNames[side]}先选，按 1-2-2-2-1 顺序。双方都预判对方的选法，每一手都取推演到选完后对本方最好的人。` +
-      (positionStats ? "" : "位置数据读取失败，按均分计算。");
-    renderPickOrder(result);
-    pickResults.hidden = false;
-    pickResultsTitle.focus({ preventScroll: true });
-    pickResults.scrollIntoView({ block: "start" });
-    return;
-  }
-  const result = findBalancedTeams(captainA, captainB, others, { scale: calibration.applied.scale, positions: Boolean(positionStats) });
-  resultsSummary.textContent = result.withinRange === 0
-    ? `${result.examined} 套分法均超出 40%–60% 区间，显示最接近五五开的 ${result.plans.length} 套。`
-    : `${result.examined} 套分法中有 ${result.withinRange} 套在 40%–60% 区间，显示 ${result.plans.length} 套。`;
-  plans.replaceChildren(...result.plans.map(renderPlan));
-  results.hidden = false;
-  resultsTitle.focus({ preventScroll: true });
-  results.scrollIntoView({ block: "start" });
+  lineup = { captainA, captainB, others: [...selected].map((id) => playersById.get(id)) };
+  renderPlayers(lineup);
+  renderAuto(lineup);
+  renderPick(lineup);
+  for (const section of sections) section.hidden = false;
+  playersTitle.focus({ preventScroll: true });
+  playersSection.scrollIntoView({ block: "start" });
 });
 
 async function refreshSharedScores() {
@@ -383,24 +437,28 @@ function renderRoster(sharedStatus) {
   renderPool();
 }
 
-async function loadPositionStats() {
+async function readJson(path) {
   try {
-    const response = await fetch("./data/position-stats.json");
+    const response = await fetch(path);
     if (!response.ok) throw new Error("HTTP " + response.status);
-    positionStats = await response.json();
+    return await response.json();
   } catch (error) {
-    console.error("Could not read position stats", error);
+    console.error(`Could not read ${path}`, error);
+    return null;
   }
 }
 
 async function loadRoster() {
   try {
-    const [response, sharedStatus] = await Promise.all([
+    const [response, sharedStatus, stats, names] = await Promise.all([
       fetch("./data/league.json"),
       refreshSharedScores(),
-      loadPositionStats(),
+      readJson("./data/position-stats.json"),
+      readJson("./data/names.json"),
     ]);
     if (!response.ok) throw new Error("Could not read league snapshot (HTTP " + response.status + ")");
+    positionStats = stats;
+    heroNames = names?.heroes ?? {};
     snapshot = await response.json();
     renderRoster(sharedStatus);
   } catch (error) {

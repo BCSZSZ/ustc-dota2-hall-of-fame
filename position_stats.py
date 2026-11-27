@@ -28,10 +28,11 @@ STRATZ_MODES = {"ALL_PICK_RANKED", "ALL_PICK", "CAPTAINS_MODE", "CAPTAINS_DRAFT"
 OPENDOTA_MODES = {1, 2, 3, 4, 16, 22}
 # A safe- or off-lane player with at least this many last hits a minute is the lane's core.
 CORE_LAST_HITS_PER_MINUTE = 3.5
-OPENDOTA_FIELDS = ("match_id", "player_slot", "radiant_win", "duration", "game_mode", "start_time", "lane_role", "last_hits")
+OPENDOTA_FIELDS = ("match_id", "player_slot", "radiant_win", "duration", "game_mode", "start_time", "lane_role", "last_hits", "hero_id")
+TOP_HEROES = 5
 STRATZ_QUERY = """query($a: Long!, $skip: Int!) { player(steamAccountId: $a) {
   matches(request: {take: %d, skip: $skip}) { id startDateTime gameMode durationSeconds
-    players(steamAccountId: $a) { isVictory position } } } }""" % STRATZ_PAGE
+    players(steamAccountId: $a) { isVictory position heroId } } } }""" % STRATZ_PAGE
 
 
 def opendota_position(match: dict[str, Any]) -> str | None:
@@ -56,7 +57,7 @@ def _opendota_games(get_json: Any, account: int, oldest: float) -> list[dict[str
             break
         if (match.get("game_mode") in OPENDOTA_MODES and (match.get("duration") or 0) >= 600
                 and isinstance(match.get("radiant_win"), bool) and isinstance(match.get("player_slot"), int)):
-            games.append({"id": match.get("match_id"), "start": match["start_time"],
+            games.append({"id": match.get("match_id"), "start": match["start_time"], "hero": match.get("hero_id"),
                           "won": (match["player_slot"] < 128) == match["radiant_win"], "position": opendota_position(match)})
     return games
 
@@ -78,7 +79,8 @@ def _stratz_games(http: httpx.Client, account: int, oldest: float) -> list[dict[
             position = (player.get("position") or "")[-1:]
             if (match.get("gameMode") in STRATZ_MODES and (match.get("durationSeconds") or 0) >= 600
                     and position in {"1", "2", "3", "4", "5"} and isinstance(player.get("isVictory"), bool)):
-                games.append({"id": match.get("id"), "start": match["startDateTime"], "won": player["isVictory"], "position": position})
+                games.append({"id": match.get("id"), "start": match["startDateTime"], "hero": player.get("heroId"),
+                              "won": player["isVictory"], "position": position})
         if len(matches) < STRATZ_PAGE:
             break
     return games
@@ -116,17 +118,24 @@ def refresh_position_stats(*, data_dir: Path, account_ids: Iterable[int], opendo
             if not position:
                 continue
             sources["stratz" if game["id"] in known else "opendota"] += 1
-            games.append((game["start"], position, game["won"]))
+            games.append((game["start"], position, game["won"], game["hero"]))
             if len(games) == SAMPLE:
                 break
         positions = {position: [0, 0] for position in "12345"}
-        for _, position, won in games:
+        heroes: dict[int, list[int]] = {}
+        for _, position, won, hero in games:
             positions[position][0] += 1
             positions[position][1] += won
+            if isinstance(hero, int) and hero > 0:
+                heroes.setdefault(hero, [0, 0])
+                heroes[hero][0] += 1
+                heroes[hero][1] += won
         players[key] = {
             "games": len(games),
-            "since": datetime.fromtimestamp(min(start for start, _, _ in games), now.tzinfo).date().isoformat() if games else None,
+            "since": datetime.fromtimestamp(min(game[0] for game in games), now.tzinfo).date().isoformat() if games else None,
             "positions": positions,
+            # The most played heroes in the same games: [hero ID, games, wins].
+            "heroes": sorted(([hero, *record] for hero, record in heroes.items()), key=lambda row: (-row[1], -row[2], row[0]))[:TOP_HEROES],
             "sources": sources,
         }
     _write(data_dir / "position-stats.json", {"schema_version": 1, "generated_at_utc": _iso(now), "sample": SAMPLE, "players": players})

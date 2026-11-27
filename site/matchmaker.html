@@ -8,17 +8,18 @@
     <title>选马工具 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css?v=20261126-1" />
-    <link rel="stylesheet" href="./matchmaker.css?v=5" />
+    <link rel="stylesheet" href="./matchmaker.css?v=6" />
     <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
     <link rel="modulepreload" href="./matchmaker-model.js?v=8" />
     <link rel="modulepreload" href="./shared-mmr.js?v=4" />
     <link rel="preload" href="./data/league.json" as="fetch" crossorigin />
     <link rel="preload" href="./data/position-stats.json" as="fetch" crossorigin />
+    <link rel="preload" href="./data/names.json" as="fetch" crossorigin />
     <script>
       // Repeat visits are served from the service worker's cache (sw.js). Local servers skip it so edits show at once.
       if (!["localhost", "127.0.0.1"].includes(location.hostname)) navigator.serviceWorker?.register("./sw.js");
     </script>
-    <script src="./matchmaker.js?v=12" type="module"></script>
+    <script src="./matchmaker.js?v=13" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">
@@ -29,16 +30,11 @@
           <a class="draft-back" href="./stats.html">数据 <span aria-hidden="true">→</span></a>
         </nav>
         <h1>选马工具</h1>
-        <p>固定两位队长，再从联赛名单选八匹马，按综合 MMR 自动配队或给出选马顺序。</p>
+        <p>选好两位队长和八匹马，看每个人的水平，再给出自动分队和双方的选马顺序。</p>
       </div>
     </header>
 
     <main class="page-shell draft-shell">
-      <div class="draft-tabs" role="tablist" aria-label="功能">
-        <button type="button" role="tab" id="tabAuto" data-mode="auto" aria-selected="true">自动分配</button>
-        <button type="button" role="tab" id="tabPick" data-mode="pick" aria-selected="false" tabindex="-1">选马建议</button>
-      </div>
-
       <form class="panel draft-setup" id="draftForm" aria-labelledby="draftSetupTitle">
         <div class="draft-heading">
           <h2 id="draftSetupTitle">选人</h2>
@@ -67,19 +63,22 @@
 
           <div class="draft-submit-row">
             <p id="draftSelection" class="draft-meta" role="status">队长 0 / 2 · 队员 0 / 8</p>
-            <div class="draft-first-pick" id="pickOptions" role="radiogroup" aria-label="先选方" hidden>
-              <span>先选方</span>
-              <label><input type="radio" name="firstPick" value="A" checked /> 甲队</label>
-              <label><input type="radio" name="firstPick" value="B" /> 乙队</label>
-            </div>
             <button class="draft-primary" id="draftSubmit" type="submit" disabled>计算分队</button>
           </div>
         </fieldset>
       </form>
 
+      <section class="panel draft-results" id="draftPlayers" aria-labelledby="draftPlayersTitle" hidden>
+        <div class="draft-heading">
+          <h2 id="draftPlayersTitle" tabindex="-1">参赛选手</h2>
+        </div>
+        <p class="draft-meta">综合分下面是各号位的天梯估分和最近 100 场公开比赛里最常用的英雄。红底是打得最多的号位，灰色斜纹是少于 10 场的号位。</p>
+        <div id="draftPlayerCards" class="draft-cards"></div>
+      </section>
+
       <section class="panel draft-results" id="draftResults" aria-labelledby="draftResultsTitle" hidden>
         <div class="draft-heading">
-          <h2 id="draftResultsTitle" tabindex="-1">备选阵容</h2>
+          <h2 id="draftResultsTitle">自动分队</h2>
         </div>
         <p class="draft-meta" id="draftResultsSummary"></p>
         <div id="draftPlans" class="draft-plans"></div>
@@ -87,11 +86,16 @@
 
       <section class="panel draft-results" id="pickResults" aria-labelledby="pickResultsTitle" hidden>
         <div class="draft-heading">
-          <h2 id="pickResultsTitle" tabindex="-1">选马建议</h2>
+          <h2 id="pickResultsTitle">选马建议</h2>
+          <div class="draft-first-pick" id="pickOptions" role="radiogroup" aria-label="先选方">
+            <span>先选方</span>
+            <label><input type="radio" name="firstPick" value="A" checked /> 甲队</label>
+            <label><input type="radio" name="firstPick" value="B" /> 乙队</label>
+          </div>
         </div>
         <p class="draft-meta" id="pickSummary"></p>
+        <div id="pickForecast"></div>
         <ol class="draft-pick-order" id="pickOrder"></ol>
-        <div id="pickPlan" class="draft-plans"></div>
       </section>
 
       <details class="draft-rules">

@@ -13,9 +13,10 @@ def at(age_days: float) -> int:
     return int((NOW - timedelta(days=age_days)).timestamp())
 
 
-def od(match_id: int, age_days: float, won: bool, lane: int | None = None, last_hits: int = 0, mode: int = 22, seconds: int = 1800) -> dict:
+def od(match_id: int, age_days: float, won: bool, lane: int | None = None, last_hits: int = 0, mode: int = 22, seconds: int = 1800,
+       hero: int = 1) -> dict:
     return {"match_id": match_id, "start_time": at(age_days), "game_mode": mode, "duration": seconds, "player_slot": 0,
-            "radiant_win": won, "lane_role": lane, "last_hits": last_hits}
+            "radiant_win": won, "lane_role": lane, "last_hits": last_hits, "hero_id": hero}
 
 
 def sz(match_id: int, age_days: float, position: str, won: bool) -> dict:
@@ -61,15 +62,16 @@ def test_derives_positions_from_lane_and_last_hits() -> None:
 
 
 def test_lists_opendota_games_and_prefers_stratz_positions(tmp_path: Path) -> None:
-    listed = [od(1, 1, True, lane=1, last_hits=20), od(2, 2, False, lane=2), od(3, 3, True), od(4, 4, True, lane=2, mode=23),
-              od(5, 5, True, lane=2, seconds=300), od(6, 6, False, lane=3, last_hits=200), od(7, 400, True, lane=2)]
+    listed = [od(1, 1, True, lane=1, last_hits=20, hero=7), od(2, 2, False, lane=2, hero=9), od(3, 3, True, hero=9), od(4, 4, True, lane=2, mode=23),
+              od(5, 5, True, lane=2, seconds=300), od(6, 6, False, lane=3, last_hits=200, hero=5), od(7, 400, True, lane=2)]
     calls: list = []
     result = refresh_position_stats(data_dir=tmp_path, account_ids=[7, 7], opendota=OpenDota({7: listed}),
                                     stratz=stratz({7: [sz(1, 1, "POSITION_4", True), sz(3, 3, "POSITION_2", True)]}, calls), now=NOW)
     assert result == {"players": 1, "failed": 0}
     assert calls == [(7, 0)]
     assert read(tmp_path)["7"] == {"games": 4, "since": "2026-11-25", "sources": {"stratz": 2, "opendota": 2},
-                                   "positions": {"1": [0, 0], "2": [2, 1], "3": [1, 0], "4": [1, 1], "5": [0, 0]}}
+                                   "positions": {"1": [0, 0], "2": [2, 1], "3": [1, 0], "4": [1, 1], "5": [0, 0]},
+                                   "heroes": [[9, 2, 1], [7, 1, 1], [5, 1, 0]]}
 
 
 def test_falls_back_to_one_source_and_keeps_the_previous_record(tmp_path: Path) -> None:

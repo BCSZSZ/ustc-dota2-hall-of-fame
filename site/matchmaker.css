@@ -137,9 +137,9 @@
 
 .draft-pool {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
-  gap: 8px;
-  max-height: 470px;
+  grid-template-columns: repeat(auto-fill, minmax(min(215px, 100%), 1fr));
+  gap: 7px;
+  max-height: 280px;
   padding: 2px 4px 2px 2px;
   overflow: auto;
   scrollbar-width: thin;
@@ -149,9 +149,9 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px 8px;
+  gap: 8px;
   min-height: 53px;
-  padding: 8px 10px;
+  padding: 6px 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffdf7;
@@ -194,11 +194,6 @@
   font-size: 0.73rem;
 }
 
-.draft-player .pos-strip,
-.draft-player .pos-strip-empty {
-  grid-column: 1 / -1;
-}
-
 /* Position ratings, shared with the player cards on the stats pages. */
 .pos-strip {
   display: grid;
@@ -211,18 +206,19 @@
   font-size: 0.72rem;
 }
 
+/* Three tiers: most played (red fill), regular (gold outline), rarely played (grey hatching, grey pill). */
 .pos-chip {
   display: grid;
   justify-items: center;
   gap: 1px;
   min-width: 0;
   padding: 4px 2px;
-  border: 1px solid #e3cfa7;
+  border: 1px solid #d4aa75;
   border-radius: 6px;
   color: var(--ink);
   font-size: 0.66rem;
   line-height: 1.25;
-  background: #fffaf0;
+  background: #fff6e2;
 }
 
 .pos-chip small,
@@ -257,13 +253,25 @@
 }
 
 .pos-chip.rare {
-  border-style: dashed;
-  color: var(--muted);
-  background: transparent;
+  border-color: #b8ad9d;
+  color: #8a7f70;
+  background: repeating-linear-gradient(135deg, #ebe4d9 0 4px, #f7f3ec 4px 8px);
+}
+
+.pos-chip.rare small {
+  color: #8a7f70;
 }
 
 .pos-chip.rare strong {
   font-weight: 500;
+}
+
+.pos-chip.rare em {
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  background: #8a7f70;
 }
 
 .pos-tag {
@@ -422,30 +430,6 @@
   cursor: pointer;
 }
 
-.draft-tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.draft-tabs button {
-  min-height: 40px;
-  padding: 7px 18px;
-  border: 1px solid #edc98670;
-  border-radius: 8px;
-  color: var(--gold-100);
-  font: inherit;
-  font-weight: 800;
-  background: transparent;
-  cursor: pointer;
-}
-
-.draft-tabs button[aria-selected="true"] {
-  border-color: var(--gold-500);
-  color: var(--red-900);
-  background: #fff2d2;
-}
-
 .draft-first-pick {
   display: flex;
   flex-wrap: wrap;
@@ -481,48 +465,231 @@
   accent-color: var(--red-800);
 }
 
+/* 参赛选手 cards */
+.draft-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.draft-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d7b785;
+  border-radius: 10px;
+  background: #fffdf7;
+}
+
+.draft-card.captain-A {
+  border-color: #c9706f;
+  box-shadow: inset 4px 0 0 #a4112b;
+}
+
+.draft-card.captain-B {
+  border-color: #6fa58d;
+  box-shadow: inset 4px 0 0 #32765b;
+}
+
+.draft-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.draft-card-who {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.draft-card-name {
+  overflow: hidden;
+  color: var(--red-900);
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-card-role {
+  justify-self: start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: #fff7df;
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: #a4112b;
+}
+
+.captain-B .draft-card-role {
+  background: #32765b;
+}
+
+.draft-card-score {
+  display: grid;
+  justify-items: end;
+  flex-shrink: 0;
+}
+
+.draft-card-score strong {
+  color: var(--red-900);
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.draft-card-score small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.draft-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.draft-card-heroes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.draft-card-heroes > .draft-meta {
+  flex-basis: 100%;
+  font-size: 0.72rem;
+}
+
+.draft-hero {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.draft-hero-img {
+  width: 44px;
+  height: 25px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #e8dcc6;
+}
+
+/* 选马建议: one row per turn, each pick as a small card in its team's colour. */
 .draft-pick-order {
   display: grid;
-  gap: 6px;
-  margin: 0 0 14px;
-  padding-inline-start: 1.6em;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
 .draft-pick-turn {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  padding: 7px 10px;
-  border-radius: 7px;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
   background: #fae5df;
-}
-
-.draft-pick-turn strong {
-  min-width: 5.5em;
-  color: var(--red-900);
-  font-size: 0.85rem;
 }
 
 .draft-pick-B {
   background: #e0efe8;
 }
 
-.draft-pick-B strong {
+.draft-pick-captains {
+  background: #f4ecdd;
+}
+
+.draft-pick-label {
+  display: grid;
+  flex: 0 0 6.5em;
+  align-self: center;
+  color: var(--red-900);
+}
+
+.draft-pick-label strong {
+  font-size: 0.92rem;
+}
+
+.draft-pick-label small {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.draft-pick-B .draft-pick-label {
   color: #205a47;
 }
 
-.draft-pick-player {
-  font-size: 0.88rem;
-  font-weight: 700;
-  overflow-wrap: anywhere;
+.draft-pick-captains .draft-pick-label {
+  color: var(--muted);
 }
 
-.draft-pick-player small {
-  margin-inline-start: 4px;
+.draft-mini {
+  display: grid;
+  align-content: start;
+  gap: 1px;
+  min-width: 150px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #d4aa75;
+  border-left: 4px solid #a4112b;
+  border-radius: 7px;
+  background: #fffdf7;
+}
+
+.draft-mini-B {
+  border-left-color: #32765b;
+}
+
+.draft-mini small {
   color: var(--muted);
-  font-weight: 500;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.draft-mini strong {
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+}
+
+.draft-mini em {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--red-900);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+.draft-mini.rare {
+  background: repeating-linear-gradient(135deg, #ebe4d9 0 4px, #f7f3ec 4px 8px);
+}
+
+.draft-mini.rare em {
+  color: #8a7f70;
+}
+
+.draft-mini b {
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.66rem;
+  background: #8a7f70;
+}
+
+.draft-pick-scores {
+  margin-top: 4px;
 }
 
 .draft-page [hidden] {
@@ -545,5 +712,14 @@
 
   .draft-teams {
     gap: 7px;
+  }
+
+  .draft-pick-label {
+    flex-basis: 100%;
+  }
+
+  .draft-mini {
+    flex: 1 1 140px;
+    min-width: 0;
   }
 }

@@ -750,27 +750,34 @@
   opacity: 0.55;
 }
 
+/* The five columns share their rows (subgrid), so counts, bars and labels line up even when a column is empty. */
 .pc-positions {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-rows: auto 56px auto auto auto;
+  gap: 2px 8px;
+}
+
+.pc-positions.with-ladder {
+  grid-template-rows: auto auto 56px auto auto auto;
 }
 
 .pc-position {
   display: grid;
-  grid-template-rows: auto 56px auto auto auto;
+  grid-row: span 5;
+  grid-template-rows: subgrid;
   justify-items: center;
-  gap: 2px;
+  align-items: start;
   min-width: 0;
   font-size: 0.75rem;
 }
 
-.pc-position.empty > :not(.pos-chip) {
-  opacity: 0.45;
+.pc-positions.with-ladder .pc-position {
+  grid-row: span 6;
 }
 
-.pc-positions.with-ladder .pc-position {
-  grid-template-rows: auto auto 56px auto auto auto;
+.pc-position.empty > :not(.pos-chip) {
+  opacity: 0.45;
 }
 
 .pc-position .pos-chip {
@@ -792,6 +799,7 @@
 
 .pc-track {
   display: flex;
+  align-self: stretch;
   align-items: flex-end;
   justify-content: center;
   width: 100%;
