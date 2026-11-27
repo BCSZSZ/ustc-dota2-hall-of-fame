@@ -527,7 +527,7 @@ function playerSummary(accountId, games, leagueDims) {
   ];
 }
 
-// Heroes from each position's pool in recent public games; null without public data.
+// Heroes from each position's pool in the past year's normal games (ranked or not); null without that data.
 function publicHeroPool(accountId) {
   const stats = state.publicStats[accountId];
   if (!stats?.pool) return null;
@@ -543,7 +543,7 @@ function publicHeroPool(accountId) {
   }
   if (!heroes.size) return null;
   const [total] = stats.pool_games || [0];
-  return section("天梯英雄池", `近一年公开比赛（天梯、普通匹配等，不含快速模式）共 ${total} 场，列出每个号位打得最多的 10 个英雄，不随上面的时间范围变化。号位优先取 STRATZ，没有时按 OpenDota 的分路和补刀推断。`,
+  return section("常规比赛英雄池", `近一年的全部常规比赛共 ${total} 场：天梯和非天梯的全英雄选择、队长模式、随机征召、单一征召、队长征召，10 分钟以上，不含快速模式等娱乐模式。列出每个号位打得最多的 10 个英雄，不随上面的时间范围变化。号位优先取 STRATZ，没有时按 OpenDota 的分路和补刀推断。`,
     sortableTable("publicHeroes", [
       { key: "name", label: "英雄", value: (row) => hero(row.id).name, render: (row) => heroLabel(row.id) },
       { key: "games", label: "场次", value: (row) => row.games, align: "num" },
