@@ -6,12 +6,12 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-28T07:42:30.278892+00:00",
+  "generated_at_utc": "2026-11-28T08:41:31.247812+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
-    "match_ids_returned": 24,
-    "matches_available": 19,
+    "match_ids_returned": 25,
+    "matches_available": 20,
     "season_start_utc": "2026-09-12T15:00:00+00:00",
     "core_roster_seed_end_utc": "2026-11-26T15:00:00+00:00",
     "excluded_before_season": 4,
@@ -1434,6 +1434,75 @@
           "personaname": "被狼认可的牧羊人",
           "player_slot": 132,
           "hero_id": 6
+        }
+      ]
+    },
+    {
+      "match_id": 9108597551,
+      "league_id": 19224,
+      "start_time": 1795850861,
+      "duration": 3525,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 1553958829,
+          "personaname": "。。。",
+          "player_slot": 0,
+          "hero_id": 98
+        },
+        {
+          "account_id": 1007302804,
+          "personaname": "飞鞋计划",
+          "player_slot": 1,
+          "hero_id": 14
+        },
+        {
+          "account_id": 138814542,
+          "personaname": "坂",
+          "player_slot": 2,
+          "hero_id": 68
+        },
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 3,
+          "hero_id": 35
+        },
+        {
+          "account_id": 883819932,
+          "personaname": "被狼认可的牧羊人",
+          "player_slot": 4,
+          "hero_id": 70
+        },
+        {
+          "account_id": 341531496,
+          "personaname": "我永远喜欢椎名真昼",
+          "player_slot": 128,
+          "hero_id": 63
+        },
+        {
+          "account_id": 255076729,
+          "personaname": "Stellaris",
+          "player_slot": 129,
+          "hero_id": 42
+        },
+        {
+          "account_id": 274556888,
+          "personaname": "通天河灵感大王",
+          "player_slot": 130,
+          "hero_id": 74
+        },
+        {
+          "account_id": 292823960,
+          "personaname": "最上30",
+          "player_slot": 131,
+          "hero_id": 85
+        },
+        {
+          "account_id": 349809744,
+          "personaname": "尔多隆",
+          "player_slot": 132,
+          "hero_id": 3
         }
       ]
     }
