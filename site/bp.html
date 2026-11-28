@@ -8,17 +8,17 @@
     <title>BP 建议 · 科大光荣榜</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css?v=20261127-1" />
-    <link rel="stylesheet" href="./matchmaker.css?v=9" />
+    <link rel="stylesheet" href="./matchmaker.css?v=10" />
     <link rel="preconnect" href="https://408sq8skz1.execute-api.ap-northeast-1.amazonaws.com" crossorigin />
     <link rel="modulepreload" href="./bp-model.js?v=3" />
-    <link rel="modulepreload" href="./matchmaker-model.js?v=11" />
+    <link rel="modulepreload" href="./matchmaker-model.js?v=12" />
     <link rel="modulepreload" href="./shared-mmr.js?v=4" />
     <link rel="preload" href="./data/league.json" as="fetch" crossorigin />
     <link rel="preload" href="./data/position-stats.json" as="fetch" crossorigin />
     <link rel="preload" href="./data/hero-meta.json" as="fetch" crossorigin />
     <link rel="preload" href="./data/names.json" as="fetch" crossorigin />
     <script src="./refresh.js?v=1" defer></script>
-    <script src="./bp.js?v=5" type="module"></script>
+    <script src="./bp.js?v=6" type="module"></script>
   </head>
   <body class="draft-page">
     <header class="draft-header">
@@ -30,7 +30,7 @@
           <button class="draft-back cache-refresh" type="button" data-hard-refresh title="清空本站在浏览器里的缓存，从服务器重新下载最新的页面和数据">强制刷新</button>
         </nav>
         <h1>BP 建议</h1>
-        <p>给两边各选五个人，看双方每个号位的绝活英雄，再分别站在甲队、乙队的立场给出 ban 和 pick 建议。</p>
+        <p>从名单里勾选十个人分成两队，先看预计胜率和双方每个号位的绝活英雄，再分别站在甲队、乙队的立场给出 ban 和 pick 建议。</p>
       </div>
     </header>
 
@@ -43,17 +43,29 @@
         <fieldset id="bpInputs" disabled aria-label="选择双方选手">
           <div class="bp-teams">
             <div class="bp-team-pick" data-side="A">
-              <h3>甲队</h3>
-              <div class="bp-selects" id="bpTeamA"></div>
+              <h3>甲队 <small id="bpCountA">0 / 5</small></h3>
+              <div class="bp-team-slots" id="bpTeamA" aria-label="甲队已选"></div>
             </div>
             <div class="bp-team-pick" data-side="B">
-              <h3>乙队</h3>
-              <div class="bp-selects" id="bpTeamB"></div>
+              <h3>乙队 <small id="bpCountB">0 / 5</small></h3>
+              <div class="bp-team-slots" id="bpTeamB" aria-label="乙队已选"></div>
             </div>
           </div>
+
+          <div class="draft-pool-heading">
+            <h3 id="bpPoolTitle">选手名单</h3>
+            <input type="search" id="bpSearch" aria-label="搜索玩家" placeholder="按昵称或 Account ID 搜索" />
+          </div>
+          <p class="draft-meta">勾选十个人，先满甲队再进乙队；行右边的“甲 / 乙”切换队伍，一队最多 5 人。也可以勾满十人后点“均衡分队”，按阵容 MMR 分成最接近五五开的两队。</p>
+          <div class="draft-pool" id="bpRoster" role="group" aria-labelledby="bpPoolTitle"></div>
+          <p class="draft-meta" id="bpNoMatches" hidden>没有符合搜索条件的玩家。</p>
+
           <div class="draft-submit-row">
             <p id="bpSelection" class="draft-meta" role="status">甲队 0 / 5 · 乙队 0 / 5</p>
-            <button class="draft-primary" id="bpSubmit" type="submit" disabled>生成 BP 建议</button>
+            <div class="bp-actions">
+              <button class="draft-secondary" id="bpBalance" type="button" disabled>均衡分队</button>
+              <button class="draft-primary" id="bpSubmit" type="submit" disabled>生成 BP 建议</button>
+            </div>
           </div>
         </fieldset>
       </form>
@@ -62,6 +74,7 @@
         <div class="draft-heading">
           <h2 id="bpPoolsTitle" tabindex="-1">双方绝活</h2>
         </div>
+        <div id="bpForecast"></div>
         <p class="draft-meta">号位按阵容 MMR 最高的分配。每人列出这个号位最拿手的英雄：近一年常规比赛的场数和胜率，“版本强”是这个号位当前版本胜率明显高于 50% 的英雄。</p>
         <div class="bp-columns" id="bpPoolColumns"></div>
       </section>
@@ -76,6 +89,7 @@
 
       <details class="draft-rules">
         <summary>BP 建议怎么算</summary>
+        <p>预计胜率：和选马工具一样，按两队的阵容 MMR（各号位 MMR 按优先级加权）用 Elo 公式算，尺度按联赛历史校准。均衡分队在 126 种分法里取阵容 MMR 最接近的一种。</p>
         <p>英雄池：每天从 OpenDota（最多 300 场）和 STRATZ（最多 300 场）取每人近一年的常规比赛（天梯和非天梯都算，10 分钟以上），合并去重，号位优先用 STRATZ 的判断，否则按 OpenDota 的分路和每分钟正补推断，按号位记每个英雄的场数和胜场。算某人某号位的英雄时，这个号位的场次全算，其他号位的场次算一半。</p>
         <p>版本强势：每天同时从 STRATZ 取超凡入圣和冠绝一世最近两周排位里每个号位每个英雄的场数和胜场，从 OpenDota 取同分段不分号位的场数和胜场。胜率先加 400 场 50% 的虚拟比赛收缩，减去 50% 是版本优势（百分点）。某号位的版本优势按 STRATZ 这个号位的数字算，再向 OpenDota 的整体水平移一半（两边整体胜率的差的一半），两个来源都算进去；在这个号位出场率不到 2% 的不算。哪个来源某天取不到，就沿用它上一次的数据。</p>
         <p>拿手值（百分点）＝ 熟练度 ×（4 ＋ 本人这个英雄的胜率减本人总胜率，按 10 场收缩）＋ 版本优势。熟练度 ＝ 场数 ÷（场数 ＋ 8），8 场时为一半。</p>

@@ -725,19 +725,131 @@
   color: #205a47;
 }
 
-.bp-selects {
-  display: grid;
+.bp-team-pick h3 small {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.bp-team-slots {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
-.bp-selects select {
-  min-height: 40px;
-  padding: 7px 10px;
+.bp-empty-slot {
+  padding: 5px 12px;
+  border: 1px dashed #cdbb9f;
+  border-radius: 999px;
+  color: #a89a85;
+  font-size: 0.8rem;
+}
+
+.bp-chip-B {
+  border-color: #8fbfa9;
+  color: #205a47;
+  background: #e6f4ec;
+}
+
+#bpRoster {
+  grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr));
+  max-height: 340px;
+}
+
+.bp-roster-row {
+  cursor: default;
+}
+
+.bp-roster-label {
+  display: contents;
+  cursor: pointer;
+}
+
+.draft-player.bp-roster-row.bp-in-A {
+  border-color: #c9737f;
+  background: #fbe9e9;
+}
+
+.draft-player.bp-roster-row.bp-in-B {
+  border-color: #7fb39b;
+  background: #e8f4ed;
+}
+
+.draft-player.bp-roster-row.bp-row-disabled {
+  opacity: 0.53;
+}
+
+.bp-side-toggle {
+  display: inline-flex;
+  overflow: hidden;
   border: 1px solid #c8aa80;
   border-radius: 7px;
-  color: var(--ink);
+}
+
+.bp-side-toggle:not(:has(button:not([hidden]))) {
+  display: none;
+}
+
+.bp-side-button {
+  min-width: 32px;
+  min-height: 30px;
+  padding: 2px 8px;
+  border: 0;
+  color: var(--muted);
   font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
   background: #fffefa;
+  cursor: pointer;
+}
+
+.bp-side-button + .bp-side-button {
+  border-left: 1px solid #c8aa80;
+}
+
+.bp-side-button-A[aria-pressed="true"] {
+  color: #fff;
+  background: #a4112b;
+}
+
+.bp-side-button-B[aria-pressed="true"] {
+  color: #fff;
+  background: #32765b;
+}
+
+.bp-side-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.draft-secondary {
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid #c8aa80;
+  border-radius: 8px;
+  color: var(--red-900);
+  font-weight: 700;
+  background: #fffefa;
+}
+
+.draft-secondary:hover:not(:disabled) {
+  background: #fff2d2;
+}
+
+.draft-secondary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+#bpForecast {
+  margin-bottom: 4px;
 }
 
 .bp-columns {

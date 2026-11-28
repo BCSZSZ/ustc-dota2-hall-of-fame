@@ -1,7 +1,7 @@
 import {
   attachPositionRatings, buildLeagueRoster, calibrateModel, describeMedals, findBalancedTeams,
   POSITION_MIN_GAMES, POSITION_NAMES, positionProfile, suggestPickOrder,
-} from "./matchmaker-model.js?v=11";
+} from "./matchmaker-model.js?v=12";
 import { loadSharedMmr } from "./shared-mmr.js?v=4";
 
 const form = document.querySelector("#draftForm");

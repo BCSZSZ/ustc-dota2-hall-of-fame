@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildLeagueRoster, calibrateModel, DEFAULT_MODEL, describeRankTier, estimateRankMmr, findBalancedTeams, OPTIMAL_STRATEGY, PICK_TURNS, suggestPickOrder,
+import { balancedSplit, buildLeagueRoster, calibrateModel, DEFAULT_MODEL, forecastTeams, describeRankTier, estimateRankMmr, findBalancedTeams, OPTIMAL_STRATEGY, PICK_TURNS, suggestPickOrder,
   attachPositionRatings, describeMedals, medalEstimate, POSITION_WEIGHTS, RARE_POSITION_PENALTY, positionProfile, rateLeague } from "../site/matchmaker-model.js";
 
 function match(matchId, startTime, radiantWin, firstAccountId = 1) {
@@ -473,4 +473,19 @@ test("combines OpenDota's and STRATZ's medals", () => {
   assert.equal(players.get(1).stratzRankTier, 65);
   assert.equal(players.get(2).baseRating, 3619);
   assert.equal(players.get(2).ratingSource, "medal");
+});
+
+test("forecasts two fixed teams and finds the most even split of ten", () => {
+  const players = playersForRatings([5000, 4900, 4800, 4700, 4600, 4500, 4400, 4300, 4200, 4100]);
+  const fixed = forecastTeams(players.slice(0, 5), players.slice(5));
+  assert.equal(fixed.averageA - fixed.averageB, 500);
+  assert.ok(Math.abs(fixed.winChanceA - expectedWinChance(500)) < 1e-12);
+
+  const split = balancedSplit(players);
+  assert.equal(split.teamA.length, 5);
+  assert.equal(split.teamB.length, 5);
+  assert.equal(split.teamA[0], players[0]);
+  assert.equal(split.ratingGap, 20);
+  assert.deepEqual(new Set([...split.teamA, ...split.teamB]), new Set(players));
+  assert.throws(() => balancedSplit(players.slice(1)), TypeError);
 });

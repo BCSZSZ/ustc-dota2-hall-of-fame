@@ -427,6 +427,28 @@ function describeTeams(teamA, teamB, scale, positions) {
   };
 }
 
+// Lineup MMR and win chance for two fixed teams of five.
+export function forecastTeams(teamA, teamB, { scale = DEFAULT_MODEL.scale, positions = false } = {}) {
+  return describeTeams(teamA, teamB, scale, positions);
+}
+
+// The 5v5 split of ten players closest to even. The first player stays in team A so each split counts once;
+// ties keep the first split found.
+export function balancedSplit(players, options = {}) {
+  if (players.length !== 10) throw new TypeError("A balanced split needs exactly ten players.");
+  const [first, ...rest] = players;
+  let best = null;
+  for (let mask = 0; mask < (1 << rest.length); mask += 1) {
+    if (countBits(mask) !== 4) continue;
+    const teamA = [first];
+    const teamB = [];
+    rest.forEach((player, index) => ((mask & (1 << index)) ? teamA : teamB).push(player));
+    const plan = forecastTeams(teamA, teamB, options);
+    if (!best || plan.ratingGap < best.ratingGap - 1e-9) best = plan;
+  }
+  return best;
+}
+
 // Captains pick the eight others in 1-2-2-2-1 turns, starting with the first picker.
 export const PICK_TURNS = Object.freeze([1, 2, 2, 2, 1]);
 
