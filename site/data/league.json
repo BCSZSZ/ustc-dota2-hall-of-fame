@@ -6,12 +6,12 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-28T01:04:12.040856+00:00",
+  "generated_at_utc": "2026-11-28T06:34:08.908282+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
-    "match_ids_returned": 23,
-    "matches_available": 18,
+    "match_ids_returned": 24,
+    "matches_available": 19,
     "season_start_utc": "2026-09-12T15:00:00+00:00",
     "core_roster_seed_end_utc": "2026-11-26T15:00:00+00:00",
     "excluded_before_season": 4,
@@ -1363,6 +1363,75 @@
         {
           "account_id": 191810399,
           "personaname": "纯正",
+          "player_slot": 132,
+          "hero_id": 6
+        }
+      ]
+    },
+    {
+      "match_id": 9108515209,
+      "league_id": 19224,
+      "start_time": 1795844234,
+      "duration": 2334,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 1553958829,
+          "personaname": "。。。",
+          "player_slot": 0,
+          "hero_id": 98
+        },
+        {
+          "account_id": 292823960,
+          "personaname": "最上30",
+          "player_slot": 1,
+          "hero_id": 7
+        },
+        {
+          "account_id": 1068845781,
+          "personaname": "Reisen suki",
+          "player_slot": 2,
+          "hero_id": 105
+        },
+        {
+          "account_id": 182754056,
+          "personaname": "nameless422",
+          "player_slot": 3,
+          "hero_id": 30
+        },
+        {
+          "account_id": 191810399,
+          "personaname": "纯正",
+          "player_slot": 4,
+          "hero_id": 18
+        },
+        {
+          "account_id": 1007302804,
+          "personaname": "飞鞋计划",
+          "player_slot": 128,
+          "hero_id": 93
+        },
+        {
+          "account_id": 349809744,
+          "personaname": "尔多隆",
+          "player_slot": 129,
+          "hero_id": 69
+        },
+        {
+          "account_id": 372120492,
+          "personaname": "volatil",
+          "player_slot": 130,
+          "hero_id": 62
+        },
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 131,
+          "hero_id": 85
+        },
+        {
+          "account_id": 883819932,
+          "personaname": "被狼认可的牧羊人",
           "player_slot": 132,
           "hero_id": 6
         }
