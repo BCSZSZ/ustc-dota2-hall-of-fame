@@ -6,12 +6,12 @@
     "tier": "excluded",
     "banner": ""
   },
-  "generated_at_utc": "2026-11-28T12:02:46.697706+00:00",
+  "generated_at_utc": "2026-11-28T12:33:56.107561+00:00",
   "time_zone": "Asia/Tokyo",
   "source": "OpenDota public API",
   "metadata": {
-    "match_ids_returned": 27,
-    "matches_available": 22,
+    "match_ids_returned": 28,
+    "matches_available": 23,
     "season_start_utc": "2026-09-12T15:00:00+00:00",
     "core_roster_seed_end_utc": "2026-11-26T15:00:00+00:00",
     "excluded_before_season": 4,
@@ -98,6 +98,7 @@
       341531496,
       349809744,
       372120492,
+      398827981,
       883819932,
       1007302804,
       1068845781,
@@ -1641,6 +1642,75 @@
           "personaname": "被狼认可的牧羊人",
           "player_slot": 132,
           "hero_id": 97
+        }
+      ]
+    },
+    {
+      "match_id": 9108859058,
+      "league_id": 19224,
+      "start_time": 1795866226,
+      "duration": 1602,
+      "radiant_win": false,
+      "players": [
+        {
+          "account_id": 398827981,
+          "personaname": "Kotori",
+          "player_slot": 0,
+          "hero_id": 84
+        },
+        {
+          "account_id": 341531496,
+          "personaname": "我永远喜欢椎名真昼",
+          "player_slot": 1,
+          "hero_id": 53
+        },
+        {
+          "account_id": 292823960,
+          "personaname": "最上30",
+          "player_slot": 2,
+          "hero_id": 22
+        },
+        {
+          "account_id": 1553958829,
+          "personaname": "。。。",
+          "player_slot": 3,
+          "hero_id": 2
+        },
+        {
+          "account_id": 191810399,
+          "personaname": "纯正",
+          "player_slot": 4,
+          "hero_id": 119
+        },
+        {
+          "account_id": 1098196409,
+          "personaname": "玄德",
+          "player_slot": 128,
+          "hero_id": 54
+        },
+        {
+          "account_id": 1130047837,
+          "personaname": "昭昭",
+          "player_slot": 129,
+          "hero_id": 106
+        },
+        {
+          "account_id": 255076729,
+          "personaname": "Stellaris",
+          "player_slot": 130,
+          "hero_id": 60
+        },
+        {
+          "account_id": 138814542,
+          "personaname": "坂",
+          "player_slot": 131,
+          "hero_id": 103
+        },
+        {
+          "account_id": 135794101,
+          "personaname": "飛靴点金聖劍の神！薇苒沈次郎です",
+          "player_slot": 132,
+          "hero_id": 68
         }
       ]
     }
